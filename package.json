@@ -1,0 +1,8 @@
+{
+  "name": "greenhub-parts",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  }
+}
