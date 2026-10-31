@@ -290,6 +290,8 @@ drop policy if exists "Admins manage storefront settings" on public.store_settin
 drop policy if exists "Admins manage profiles" on public.profiles;
 drop policy if exists "Admins manage orders" on public.orders;
 drop policy if exists "Admins manage customers" on public.customers;
+drop policy if exists "Public can create orders" on public.orders;
+drop policy if exists "Public can create customers" on public.customers;
 drop policy if exists "Public can view support presence" on public.support_presence;
 drop policy if exists "Admins manage support presence" on public.support_presence;
 drop policy if exists "Admins manage support conversations" on public.support_conversations;
@@ -311,6 +313,12 @@ create policy "Admins manage orders" on public.orders
   for all using (public.is_admin()) with check (public.is_admin());
 create policy "Admins manage customers" on public.customers
   for all using (public.is_admin()) with check (public.is_admin());
+create policy "Public can create orders" on public.orders
+  for insert to anon, authenticated
+  with check (status = 'pending' and total >= 0);
+create policy "Public can create customers" on public.customers
+  for insert to anon, authenticated
+  with check (length(trim(name)) between 1 and 200 and (email is null or length(trim(email)) <= 320));
 
 create policy "Public can view support presence" on public.support_presence
   for select using (true);
@@ -323,6 +331,7 @@ create policy "Admins manage support messages" on public.support_messages
 
 grant select on public.products, public.store_settings to anon, authenticated;
 grant select, insert, update, delete on public.products, public.store_settings, public.orders, public.customers to authenticated;
+grant insert on public.orders, public.customers to anon;
 grant select on public.profiles to authenticated;
 grant select on public.support_presence to anon, authenticated;
 grant select, insert, update, delete on public.support_presence, public.support_conversations, public.support_messages to authenticated;

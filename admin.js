@@ -408,6 +408,10 @@ async function saveProduct(event) {
   const existingProduct = products.find((item) => item.id === editingProductId);
   const product = { ...(existingProduct || {}), id: editingProductId || undefined, name: formData.get('name').trim(), category: formData.get('category'), type: formData.get('type'), price: Number(formData.get('price')), oldPrice: Number(formData.get('oldPrice')) || undefined, meta: formData.get('meta').trim(), tag: formData.get('tag').trim(), active: formData.has('active') };
   const imageFile = formData.get('image');
+  if (!wasEditing && (!imageFile || !imageFile.size)) {
+    showToast('Upload a product image before publishing');
+    return;
+  }
   if (database.configured) {
     let savedProduct;
     if (wasEditing) {

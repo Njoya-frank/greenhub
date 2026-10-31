@@ -207,7 +207,7 @@
         <div class="checkout-progress"><span class="active"><b>01</b> Payment</span><i></i><span><b>02</b> Confirmation</span></div>
         <div class="checkout-body">
           <form class="checkout-form" id="checkout-form">
-            <div class="checkout-block"><p class="checkout-kicker">DELIVERY DETAILS</p><h3>Where should we send it?</h3><div class="checkout-field-row"><label>Full name<input name="customer_name" type="text" autocomplete="name" required placeholder="Your full name" /></label><label>Email<input name="customer_email" type="email" autocomplete="email" required placeholder="you@example.com" /></label></div></div>
+            <div class="checkout-block checkout-delivery"><p class="checkout-kicker">DELIVERY DETAILS</p><h3>Where should we send it?</h3><div class="checkout-field-row"><label>Full name<input name="customer_name" type="text" autocomplete="name" required placeholder="Your full name" /></label><label>Email<input name="customer_email" type="email" autocomplete="email" required placeholder="you@example.com" /></label></div></div>
             <div class="checkout-block"><p class="checkout-kicker">PAYMENT METHOD</p><h3>How would you like to pay?</h3><div class="payment-grid">
               <button class="payment-method active" type="button" data-payment="card"><span class="payment-logo card-logo">VISA <small>MC</small></span><strong>Card</strong><em>3-D Secure</em></button>
               <button class="payment-method" type="button" data-payment="paypal"><span class="payment-logo paypal-logo">P</span><strong>PayPal</strong><em>Fast checkout</em></button>
@@ -219,13 +219,15 @@
               <button class="payment-method" type="button" data-payment="bancontact"><span class="payment-logo bancontact-logo">BC</span><strong>Bancontact</strong><em>Belgium</em></button>
               <button class="payment-method" type="button" data-payment="sofort"><span class="payment-logo sofort-logo">S</span><strong>Sofort</strong><em>Online banking</em></button>
               <button class="payment-method" type="button" data-payment="giftcard"><span class="payment-logo giftcard-logo">✦</span><strong>Gift card</strong><em>Redeem a code</em></button>
+              <button class="payment-method" type="button" data-payment="bitcoin"><span class="payment-logo bitcoin-logo">₿</span><strong>Bitcoin</strong><em>Pay with crypto</em></button>
+              <button class="payment-method" type="button" data-payment="cash"><span class="payment-logo cash-logo">CASH</span><strong>Cash</strong><em>Pay on delivery</em></button>
             </div></div>
             <div class="payment-method-notice" id="payment-method-notice">Secure card payment with Visa, Mastercard and 3-D Secure.</div>
             <div class="card-fields" id="card-fields"><label>Card number<input data-card-field inputmode="numeric" autocomplete="cc-number" placeholder="1234  5678  9012  3456" maxlength="19" /></label><div class="checkout-field-row"><label>Expiry date<input data-card-field autocomplete="cc-exp" placeholder="MM / YY" maxlength="7" /></label><label>CVC<input data-card-field autocomplete="cc-csc" placeholder="123" maxlength="4" /></label></div><label>Name on card<input data-card-field autocomplete="cc-name" placeholder="Full name" /></label></div>
             <div class="giftcard-fields" id="giftcard-fields" hidden><label>Gift card code<div class="giftcard-input"><input id="gift-card-input" autocomplete="off" placeholder="Enter your Greenhub code" /><button type="button" id="apply-gift-card">Apply</button></div></label><p id="gift-card-message">Try the demo code <strong>GREENHUB10</strong> for 10% off.</p></div>
             <label class="checkout-check"><input id="terms-check" type="checkbox" required /> <span>I agree to the <a href="#footer">terms and returns policy</a>.</span></label>
             <button class="button button-dark checkout-submit" type="submit"><span id="pay-button-label">Pay securely</span><b id="checkout-total">€0.00</b></button>
-            <p class="checkout-security">🔒 Payments are encrypted and processed securely. Your card details never touch our store.</p>
+            <p class="checkout-security" id="checkout-security">🔒 Payments are encrypted and processed securely. Your card details never touch our store.</p>
           </form>
           <aside class="checkout-summary"><p class="checkout-kicker">ORDER SUMMARY</p><div id="checkout-items"></div><div class="checkout-total-row"><span>Subtotal</span><strong id="checkout-subtotal">€0.00</strong></div><div class="checkout-total-row discount-row" id="checkout-discount-row" hidden><span>Gift card</span><strong id="checkout-discount">−€0.00</strong></div><div class="checkout-total-row grand-total"><span>Total</span><strong id="checkout-grand-total">€0.00</strong></div><p class="checkout-shipping">Free shipping over €150<br />30-day returns</p></aside>
         </div>

@@ -37,15 +37,9 @@ function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
 }
 
-function productArt(type) {
-  return `<div class="product-art ${escapeHtml(type)}" aria-hidden="true"></div>`;
-}
-
 function productVisual(product) {
   const imageUrl = product.image_url || product.imageUrl;
-  return imageUrl
-    ? `<img class="product-photo" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(product.name)}" loading="lazy" />`
-    : productArt(product.type);
+  return imageUrl ? `<img class="product-photo" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(product.name)}" loading="lazy" />` : '';
 }
 
 function visibleProducts() {
@@ -75,6 +69,13 @@ function renderProducts() {
     productCount.textContent = 'Catalogue unavailable';
     return;
   }
+  if (!products.length) {
+    productGrid.innerHTML = '';
+    emptyState.hidden = false;
+    emptyState.innerHTML = '<strong>No products available.</strong><span>Products with images added to Supabase will appear here.</span>';
+    productCount.textContent = 'No products available';
+    return;
+  }
   const visible = visibleProducts();
   productGrid.innerHTML = visible.map((product) => `
     <article class="product-card reveal">
@@ -88,6 +89,7 @@ function renderProducts() {
     </article>
   `).join('');
   emptyState.hidden = visible.length !== 0;
+  if (!visible.length) emptyState.innerHTML = '<strong>No matching parts.</strong><span>Try another search term or browse all parts.</span><button class="text-link reset-search">Clear search ↗</button>';
   productCount.textContent = visible.length ? `Showing ${visible.length} of ${products.length} parts` : 'No matching parts';
   observeReveals();
 }
@@ -210,8 +212,10 @@ const checkoutForm = document.querySelector('#checkout-form');
 const cardFields = document.querySelector('#card-fields');
 const giftcardFields = document.querySelector('#giftcard-fields');
 const paymentNotice = document.querySelector('#payment-method-notice');
-const paymentMessages = { card: 'Secure card payment with Visa, Mastercard and 3-D Secure.', paypal: 'You will be redirected to PayPal to approve your payment.', applepay: 'Apple Pay will open securely on a supported Apple device.', googlepay: 'Google Pay will open securely on a supported device.', klarna: 'Klarna lets you spread the cost. Availability depends on your location.', sepa: 'SEPA Direct Debit is available for supported euro-area bank accounts.', ideal: 'iDEAL securely connects you to your Dutch bank to approve payment.', bancontact: 'Bancontact securely connects you to your Belgian bank to approve payment.', sofort: 'Sofort securely connects you to your online banking provider.', giftcard: 'Enter a valid Greenhub gift card code to apply your balance.' };
-const paymentLabels = { card: 'Pay securely', paypal: 'Continue to PayPal', applepay: 'Pay with Apple Pay', googlepay: 'Pay with Google Pay', klarna: 'Continue with Klarna', sepa: 'Set up SEPA debit', ideal: 'Pay with iDEAL', bancontact: 'Pay with Bancontact', sofort: 'Continue with Sofort', giftcard: 'Redeem gift card' };
+const paymentSecurity = document.querySelector('#checkout-security');
+const paymentMessages = { card: 'Secure card payment with Visa, Mastercard and 3-D Secure.', paypal: 'You will be redirected to PayPal to approve your payment.', applepay: 'Apple Pay will open securely on a supported Apple device.', googlepay: 'Google Pay will open securely on a supported device.', klarna: 'Klarna lets you spread the cost. Availability depends on your location.', sepa: 'SEPA Direct Debit is available for supported euro-area bank accounts.', ideal: 'iDEAL securely connects you to your Dutch bank to approve payment.', bancontact: 'Bancontact securely connects you to your Belgian bank to approve payment.', sofort: 'Sofort securely connects you to your online banking provider.', giftcard: 'Enter a valid Greenhub gift card code to apply your balance.', bitcoin: 'Bitcoin payment is selected. Follow the payment instructions to complete your order.', cash: 'Cash payment is selected. Pay when your order is delivered.' };
+const paymentLabels = { card: 'Pay securely', paypal: 'Continue to PayPal', applepay: 'Pay with Apple Pay', googlepay: 'Pay with Google Pay', klarna: 'Continue with Klarna', sepa: 'Set up SEPA debit', ideal: 'Pay with iDEAL', bancontact: 'Pay with Bancontact', sofort: 'Continue with Sofort', giftcard: 'Redeem gift card', bitcoin: 'Continue with Bitcoin', cash: 'Place cash order' };
+const paymentSecurityMessages = { card: '🔒 Payments are encrypted and processed securely. Your card details never touch our store.', bitcoin: '₿ Bitcoin payment instructions will be provided after you confirm your order.', cash: '✓ Pay in cash when your order is delivered.' };
 
 function selectPayment(payment) {
   state.payment = payment;
@@ -221,6 +225,7 @@ function selectPayment(payment) {
   giftcardFields.hidden = payment !== 'giftcard';
   cardFields.querySelectorAll('[data-card-field]').forEach((field) => { field.required = payment === 'card'; });
   document.querySelector('#pay-button-label').textContent = paymentLabels[payment];
+  paymentSecurity.textContent = paymentSecurityMessages[payment] || '🔒 Your payment is processed securely by the selected provider.';
   renderCheckoutSummary();
 }
 
@@ -308,7 +313,13 @@ checkoutForm.addEventListener('submit', (event) => {
   }).catch((error) => {
     submitButton.classList.remove('is-loading');
     document.querySelector('#pay-button-label').textContent = paymentLabels[state.payment];
-    showToast(`Could not place order: ${error.message}`);
+    const errorMessage = String(error?.message || error || 'Unknown error');
+    const checkoutError = /failed to fetch|networkerror|err_connection_closed|load failed/i.test(errorMessage)
+      ? 'Supabase could not be reached. Check your internet connection and confirm the project is running.'
+      : /row-level security|permission denied|not authorized/i.test(errorMessage)
+        ? 'Supabase rejected the order. Run the updated supabase/schema.sql policies, then try again.'
+        : errorMessage;
+    showToast(`Could not place order: ${checkoutError}`);
   });
 });
 
@@ -322,7 +333,12 @@ function toggleSearch(open) {
 document.querySelector('.search-trigger').addEventListener('click', () => toggleSearch(!searchPanel.classList.contains('open')));
 document.querySelector('.search-close').addEventListener('click', () => toggleSearch(false));
 searchInput.addEventListener('input', (event) => { state.query = event.target.value; renderProducts(); });
-document.querySelector('.reset-search').addEventListener('click', () => { state.query = ''; searchInput.value = ''; setFilter('All'); });
+emptyState.addEventListener('click', (event) => {
+  if (!event.target.closest('.reset-search')) return;
+  state.query = '';
+  searchInput.value = '';
+  setFilter('All');
+});
 
 const menuTrigger = document.querySelector('.menu-trigger');
 const mobileNav = document.querySelector('.mobile-nav');
@@ -659,7 +675,7 @@ async function loadPublicStoreData() {
       ...product,
       image_url: window.GreenhubStorage?.resolveUrl(product.image_url, product.image_path) || product.image_url,
       oldPrice: product.old_price
-    }));
+    })).filter((product) => product.name?.trim() && product.image_url?.trim());
   }
   if (settingsResponse.error) console.error('[Greenhub] Could not load store content:', settingsResponse.error.message);
   else if (settingsResponse.data?.value) applySettings(settingsResponse.data.value);

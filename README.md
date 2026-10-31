@@ -18,6 +18,22 @@ The demo checkout also includes European payment choices: cards, PayPal, Apple P
 
 Payment selection and gift-card redemption are frontend demo flows. Connect a provider such as Stripe, Adyen, or Mollie plus a server-side order endpoint before accepting real payments.
 
+## Deploy to Vercel
+
+This is a static site on Vercel. The included `vercel.json` builds the browser files into `dist/` and keeps the local-only `server.js` from being invoked as a Vercel Function.
+
+In the Vercel project settings use the repository root as the **Root Directory**, choose **Other** as the framework preset, use `npm run build` as the **Build Command**, and use `dist` as the **Output Directory**. Do not set `npm start` as the Vercel build command.
+
+The public storefront can load without Supabase, but the catalogue, checkout order creation, admin portal, and support inbox need these Production environment variables in Vercel:
+
+```dotenv
+SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+SUPABASE_ANON_KEY=YOUR_PUBLIC_ANON_KEY
+SUPABASE_AUTH_REDIRECT_TO=https://YOUR_VERCEL_DOMAIN/admin.html
+```
+
+The values in `.env` and `.env.local` are intentionally ignored by Git and are not uploaded to Vercel. After adding the variables, redeploy so they are available to the deployment. Never add a Supabase service-role key to these variables or to browser files.
+
 ## Supabase setup
 
 The admin console uses Supabase Auth and only allows users whose profile role is `admin`.

@@ -2,6 +2,7 @@
   "name": "greenhub-parts",
   "private": true,
   "scripts": {
+    "build": "node build-vercel.js",
     "start": "node server.js",
     "dev": "node server.js"
   }
