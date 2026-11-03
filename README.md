@@ -20,7 +20,7 @@ Payment selection and gift-card redemption are frontend demo flows. Connect a pr
 
 ## Deploy to Vercel
 
-This is a static site on Vercel. The included `vercel.json` builds the browser files into `dist/`; Vercel serves that directory and does not invoke the local-only `server.js` as a Vercel Function.
+This is a static site on Vercel. The included `vercel.json` builds the browser files into `dist/`; Vercel serves that directory and does not invoke the local-only `scripts/server.js` as a Vercel Function.
 
 To give Vercel full control of deployments, import this repository into Vercel and connect the production branch. Every push to that branch will trigger a new Vercel deployment. Use the repository root as the **Root Directory** and choose **Other** as the framework preset. The committed `vercel.json` already sets `npm run build` as the **Build Command** and `dist` as the **Output Directory**. Do not set `npm start` as the Vercel build command; that command is only for local development.
 

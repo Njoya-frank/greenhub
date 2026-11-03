@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { URL } = require('node:url');
 
-const ROOT_DIR = __dirname;
+const ROOT_DIR = path.resolve(__dirname, '..');
 const PORT = Number(process.env.PORT || 4173);
 
 function parseEnvFile(filePath) {
