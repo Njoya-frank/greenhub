@@ -13,6 +13,30 @@ const STATIC_FILES = [
   'supabase-client.js'
 ];
 
+function parseEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) return {};
+
+  return fs.readFileSync(filePath, 'utf8').split(/\r?\n/).reduce((values, line) => {
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+    if (!match) return values;
+
+    let value = match[2];
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    values[match[1]] = value;
+    return values;
+  }, {});
+}
+
+function loadEnvironment() {
+  return {
+    ...parseEnvFile(path.join(ROOT_DIR, '.env')),
+    ...parseEnvFile(path.join(ROOT_DIR, '.env.local')),
+    ...process.env
+  };
+}
+
 function normalizeSupabaseUrl(value) {
   return String(value || '').trim().replace(/\/rest\/v1\/?$/i, '').replace(/\/+$/, '');
 }
@@ -30,14 +54,15 @@ function isPublicSupabaseKey(value) {
 }
 
 function createSupabaseConfig() {
-  const anonKey = String(process.env.SUPABASE_ANON_KEY || '').trim();
+  const environment = loadEnvironment();
+  const anonKey = String(environment.SUPABASE_ANON_KEY || '').trim();
   if (!isPublicSupabaseKey(anonKey)) {
     throw new Error('SUPABASE_ANON_KEY must be the public anon/publishable key, never a service-role key.');
   }
   return `window.GREENHUB_FILE_PROTOCOL = window.location.protocol === 'file:';\nwindow.GREENHUB_SUPABASE_CONFIG = Object.freeze(${JSON.stringify({
-    url: normalizeSupabaseUrl(process.env.SUPABASE_URL),
+    url: normalizeSupabaseUrl(environment.SUPABASE_URL),
     anonKey,
-    authRedirectTo: String(process.env.SUPABASE_AUTH_REDIRECT_TO || '').trim()
+    authRedirectTo: String(environment.SUPABASE_AUTH_REDIRECT_TO || '').trim()
   })});\n`;
 }
 
