@@ -22,6 +22,12 @@ let supportConversations = [];
 let activeSupportConversationId = null;
 let supportPollTimer = null;
 let supportIsAvailable = false;
+let pendingConfirmation = null;
+const confirmMessageBox = document.querySelector('#confirm-message-box');
+const confirmMessageTitle = document.querySelector('#confirm-message-title');
+const confirmMessageCopy = document.querySelector('#confirm-message-copy');
+const confirmMessageCancel = document.querySelector('#confirm-message-cancel');
+const confirmMessageAccept = document.querySelector('#confirm-message-accept');
 
 const CATEGORY_SETTING_KEYS = ['category1', 'category2', 'category3', 'category4'];
 const LEGACY_CATEGORY_SETTING_KEYS = ['categoryBrakes', 'categoryEngine', 'categoryLighting', 'categorySuspension'];
@@ -107,14 +113,14 @@ function configuredCategories(settings = storefrontSettings) {
     : CATEGORY_SETTING_KEYS.map((key, index) => settings[key] || settings[LEGACY_CATEGORY_SETTING_KEYS[index]] || '');
   const productCategories = products.map((product) => product.category);
   const configured = [...formCategories, ...settingCategories].map((value) => String(value || '').trim()).filter(Boolean);
-  const values = configured.length ? configured : productCategories.map((value) => String(value || '').trim()).filter(Boolean);
+  const values = [...configured, ...productCategories].map((value) => String(value || '').trim()).filter(Boolean);
   return [...new Set(values)];
 }
 
 function refreshCategoryControls() {
   const categories = configuredCategories();
   const filter = document.querySelector('#product-filter');
-  const datalist = document.querySelector('#product-category-options');
+  const categorySelect = document.querySelector('#product-form select[name="category"]');
   if (filter) {
     const currentValue = filter.value;
     filter.innerHTML = '<option value="All">All categories</option>';
@@ -126,12 +132,15 @@ function refreshCategoryControls() {
     });
     filter.value = categories.includes(currentValue) ? currentValue : 'All';
   }
-  if (datalist) {
-    datalist.replaceChildren(...categories.map((category) => {
+  if (categorySelect) {
+    const currentValue = categorySelect.value;
+    categorySelect.replaceChildren(new Option('Choose a category', ''), ...categories.map((category) => {
       const option = document.createElement('option');
       option.value = category;
+      option.textContent = category;
       return option;
     }));
+    categorySelect.value = categories.includes(currentValue) ? currentValue : '';
   }
 }
 
@@ -629,6 +638,27 @@ function closeProductModal() {
   editingProductId = null;
 }
 
+function closeConfirmation(confirmed = false) {
+  if (!confirmMessageBox) return;
+  confirmMessageBox.classList.remove('open');
+  confirmMessageBox.setAttribute('aria-hidden', 'true');
+  const resolve = pendingConfirmation;
+  pendingConfirmation = null;
+  if (resolve) resolve(confirmed);
+}
+
+function openConfirmation({ title, message, confirmLabel = 'Confirm' }) {
+  if (!confirmMessageBox) return Promise.resolve(false);
+  if (pendingConfirmation) closeConfirmation(false);
+  confirmMessageTitle.textContent = title;
+  confirmMessageCopy.textContent = message;
+  confirmMessageAccept.textContent = confirmLabel;
+  confirmMessageBox.classList.add('open');
+  confirmMessageBox.setAttribute('aria-hidden', 'false');
+  setTimeout(() => confirmMessageAccept.focus(), 0);
+  return new Promise((resolve) => { pendingConfirmation = resolve; });
+}
+
 async function saveProduct(event) {
   event.preventDefault();
   if (!database.configured) { showToast('Supabase is required before saving products'); return; }
@@ -783,7 +813,13 @@ document.querySelector('#products-table').addEventListener('click', (event) => {
   if (editButton) openProductModal(editButton.dataset.editProduct);
   if (deleteButton) {
     const product = products.find((item) => item.id === Number(deleteButton.dataset.deleteProduct));
-    if (product && window.confirm(`Remove ${product.name} from the storefront?`)) deleteProduct(product);
+    if (product) {
+      openConfirmation({
+        title: 'Remove product?',
+        message: `Remove “${product.name}” from the storefront? This cannot be undone.`,
+        confirmLabel: 'Remove product'
+      }).then((confirmed) => { if (confirmed) deleteProduct(product); });
+    }
   }
 });
 document.querySelector('#orders-table').addEventListener('change', (event) => {
@@ -808,9 +844,18 @@ document.querySelector('#support-conversation-list').addEventListener('click', (
 });
 document.querySelector('#support-reply-form').addEventListener('submit', sendSupportReply);
 document.querySelector('#support-close-conversation').addEventListener('click', closeSupportConversation);
+confirmMessageCancel.addEventListener('click', () => closeConfirmation(false));
+confirmMessageAccept.addEventListener('click', () => closeConfirmation(true));
+confirmMessageBox.addEventListener('click', (event) => {
+  if (event.target.closest('[data-confirm-close]')) closeConfirmation(false);
+});
 document.querySelectorAll('[data-modal-close]').forEach((item) => item.addEventListener('click', closeProductModal));
 document.querySelector('.admin-menu').addEventListener('click', () => document.querySelector('#admin-sidebar').classList.toggle('open'));
-document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeProductModal(); });
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  if (confirmMessageBox.classList.contains('open')) closeConfirmation(false);
+  else closeProductModal();
+});
 
 async function loadContent() {
   if (!database.configured) return;
@@ -828,7 +873,11 @@ async function loadContent() {
   settings.categoryImageUrls = categoryImageUrls(settings).map((url, index) => window.GreenhubStorage.resolveUrl(url, settings.categoryImagePaths?.[index]) || url);
   syncCategoryFields(categories, settings.categoryImageUrls);
   storefrontSettings = settings;
-  Object.entries(settings).forEach(([key, value]) => { if (document.querySelector(`#content-form [name="${key}"]`)) document.querySelector(`#content-form [name="${key}"]`).value = value; });
+  document.querySelectorAll('#content-form [name]').forEach((field) => {
+    const value = settings[field.name];
+    if (/title/i.test(field.name) && !String(value ?? '').trim()) field.value = 'Not titled';
+    else if (value !== undefined && value !== null) field.value = value;
+  });
   STOREFRONT_IMAGE_FIELDS.forEach((field) => setImagePreviewElement(document.querySelector(`#${field.previewId}`), settings[field.urlKey] || '', field.label));
   refreshCategoryControls();
 }

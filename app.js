@@ -776,8 +776,10 @@ function applySettings(remoteSettings = null) {
     settings.categoryImageUrls = settings.categoryImageUrls.map((url, index) => window.GreenhubStorage?.resolveUrl(url, settings.categoryImagePaths?.[index]) || url);
   }
   document.querySelectorAll('[data-setting]').forEach((element) => {
-    const value = settings[element.dataset.setting];
-    if (value !== undefined && value !== null) element.textContent = value;
+    const settingName = element.dataset.setting;
+    const value = settings[settingName];
+    if (/title/i.test(settingName) && !String(value ?? '').trim()) element.textContent = 'Not titled';
+    else if (value !== undefined && value !== null) element.textContent = value;
   });
   renderCategoryControls(settings);
   const announcementCopy = document.querySelector('.announcement > span:first-child');
