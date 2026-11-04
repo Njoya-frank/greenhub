@@ -157,24 +157,58 @@ function setFilter(filter) {
 const CATEGORY_SETTING_KEYS = ['category1', 'category2', 'category3', 'category4'];
 
 function storeCategories(settings = {}) {
-  const configured = CATEGORY_SETTING_KEYS.map((key) => settings[key]).map((value) => String(value || '').trim()).filter(Boolean);
+  const configured = Array.isArray(settings.categories)
+    ? settings.categories
+    : CATEGORY_SETTING_KEYS.map((key) => settings[key]);
+  const configuredValues = configured.map((value) => String(value || '').trim()).filter(Boolean);
   const catalogueCategories = products.map((product) => String(product.category || '').trim()).filter(Boolean);
-  return [...new Set(configured.length ? configured : catalogueCategories)];
+  return [...new Set(configuredValues.length ? configuredValues : catalogueCategories)];
+}
+
+function setCustomerImage(target, imageUrl, backgroundImage = '') {
+  const element = typeof target === 'string' ? document.querySelector(target) : target;
+  if (!element) return;
+  if (!imageUrl) {
+    element.classList.remove('has-uploaded-image');
+    element.style.removeProperty('background-image');
+    return;
+  }
+  const safeUrl = JSON.stringify(String(imageUrl));
+  element.style.backgroundImage = backgroundImage ? `${backgroundImage}, url(${safeUrl})` : `url(${safeUrl})`;
+  element.style.backgroundSize = 'cover';
+  element.style.backgroundPosition = 'center';
+  element.classList.add('has-uploaded-image');
 }
 
 function renderCategoryControls(settings = {}) {
   const categories = storeCategories(settings);
   const categorySection = document.querySelector('#categories');
-  const categoryCards = document.querySelectorAll('[data-category-slot]');
+  const categoryGrid = document.querySelector('.category-grid');
   if (categorySection) categorySection.hidden = !categories.length;
-  categoryCards.forEach((card, index) => {
-    const category = categories[index] || '';
-    card.hidden = !category;
-    if (!category) return;
+  if (!categoryGrid) return;
+  const cardClasses = ['category-brakes', 'category-engine', 'category-lighting', 'category-suspension'];
+  const imageKeys = ['categoryBrakesImageUrl', 'categoryEngineImageUrl', 'categoryLightingImageUrl', 'categorySuspensionImageUrl'];
+  categoryGrid.replaceChildren(...categories.map((category, index) => {
+    const card = document.createElement('a');
+    card.className = `category-card ${cardClasses[index % cardClasses.length]}`;
+    card.href = '#shop';
     card.dataset.categoryLink = category;
-    const label = card.querySelector('[data-setting]');
-    if (label) label.textContent = category;
-  });
+    const number = document.createElement('div');
+    number.className = 'category-number';
+    number.textContent = String(index + 1).padStart(2, '0');
+    const art = document.createElement('div');
+    art.className = 'category-art';
+    const bottom = document.createElement('div');
+    bottom.className = 'category-bottom';
+    const label = document.createElement('span');
+    label.textContent = category;
+    const explore = document.createElement('span');
+    explore.textContent = 'Explore ↗';
+    bottom.append(label, explore);
+    card.append(number, art, bottom);
+    if (imageKeys[index]) setCustomerImage(art, settings[imageKeys[index]] || '');
+    return card;
+  }));
   const filterTabs = document.querySelector('.filter-tabs');
   if (filterTabs) {
     filterTabs.querySelectorAll('[data-dynamic-category]').forEach((button) => button.remove());
@@ -676,26 +710,8 @@ function applySettings(remoteSettings = null) {
       link.href = `mailto:${settings.supportEmail}`;
     });
   }
-  const setCustomerImage = (selector, imageUrl, backgroundImage = '') => {
-    const element = document.querySelector(selector);
-    if (!element) return;
-    if (!imageUrl) {
-      element.classList.remove('has-uploaded-image');
-      element.style.removeProperty('background-image');
-      return;
-    }
-    const safeUrl = JSON.stringify(String(imageUrl));
-    element.style.backgroundImage = backgroundImage ? `${backgroundImage}, url(${safeUrl})` : `url(${safeUrl})`;
-    element.style.backgroundSize = 'cover';
-    element.style.backgroundPosition = 'center';
-    element.classList.add('has-uploaded-image');
-  };
   setCustomerImage('.hero-image', settings.heroImageUrl);
   setCustomerImage('.statement-image', settings.storyImageUrl, 'linear-gradient(120deg,rgba(31,37,29,.2),transparent)');
-  setCustomerImage('.category-brakes .category-art', settings.categoryBrakesImageUrl);
-  setCustomerImage('.category-engine .category-art', settings.categoryEngineImageUrl);
-  setCustomerImage('.category-lighting .category-art', settings.categoryLightingImageUrl);
-  setCustomerImage('.category-suspension .category-art', settings.categorySuspensionImageUrl);
 }
 
 async function loadPublicStoreData() {

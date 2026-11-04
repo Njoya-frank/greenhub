@@ -86,8 +86,12 @@ function escapeHtml(value) {
 }
 
 function configuredCategories(settings = storefrontSettings) {
-  const formCategories = CATEGORY_SETTING_KEYS.map((key) => document.querySelector(`#content-form [name="${key}"]`)?.value);
-  const settingCategories = CATEGORY_SETTING_KEYS.map((key, index) => settings[key] || settings[LEGACY_CATEGORY_SETTING_KEYS[index]] || '');
+  const formCategories = [...document.querySelectorAll('#content-form input')]
+    .filter((input) => /^category\d+$/.test(input.name))
+    .map((input) => input.value);
+  const settingCategories = Array.isArray(settings.categories)
+    ? settings.categories
+    : CATEGORY_SETTING_KEYS.map((key, index) => settings[key] || settings[LEGACY_CATEGORY_SETTING_KEYS[index]] || '');
   const productCategories = products.map((product) => product.category);
   const configured = [...formCategories, ...settingCategories].map((value) => String(value || '').trim()).filter(Boolean);
   const values = configured.length ? configured : productCategories.map((value) => String(value || '').trim()).filter(Boolean);
@@ -116,6 +120,57 @@ function refreshCategoryControls() {
       return option;
     }));
   }
+}
+
+function categoryFieldInputs() {
+  return [...document.querySelectorAll('#content-form input')]
+    .filter((input) => /^category\d+$/.test(input.name))
+    .sort((a, b) => Number(a.name.replace('category', '')) - Number(b.name.replace('category', '')));
+}
+
+function createCategoryField(index, value = '') {
+  const label = document.createElement('label');
+  label.textContent = `Product category ${index}`;
+  const input = document.createElement('input');
+  input.name = `category${index}`;
+  input.type = 'text';
+  input.placeholder = 'e.g. Accessories';
+  input.value = value;
+  label.appendChild(input);
+  return label;
+}
+
+function syncCategoryFields(categories = []) {
+  const firstInput = document.querySelector('#content-form input[name="category1"]');
+  const group = firstInput?.closest('.form-grid');
+  if (!group) return;
+  const values = categories.map((category) => String(category || '').trim());
+  const inputs = categoryFieldInputs();
+  values.slice(inputs.length).forEach((value, offset) => group.insertBefore(createCategoryField(inputs.length + offset + 1, value), group.querySelector('[data-add-store-category]')));
+  categoryFieldInputs().forEach((input, index) => {
+    input.value = values[index] || '';
+  });
+  let addButton = group.querySelector('[data-add-store-category]');
+  if (!addButton) {
+    addButton = document.createElement('button');
+    addButton.type = 'button';
+    addButton.className = 'admin-button secondary category-add-button';
+    addButton.dataset.addStoreCategory = 'true';
+    addButton.textContent = '+ Add category';
+    group.appendChild(addButton);
+  }
+}
+
+function addStoreCategoryField() {
+  const input = document.querySelector('#content-form input[name="category1"]');
+  const group = input?.closest('.form-grid');
+  if (!group) return;
+  const nextIndex = categoryFieldInputs().length + 1;
+  const addButton = group.querySelector('[data-add-store-category]');
+  const field = createCategoryField(nextIndex);
+  group.insertBefore(field, addButton || null);
+  field.querySelector('input').focus();
+  refreshCategoryControls();
 }
 
 function artLetter(type) {
@@ -568,6 +623,9 @@ async function saveContent(event) {
   for (const [key, value] of formData.entries()) {
     if (!(value instanceof File)) settings[key] = value;
   }
+  const categories = categoryFieldInputs().map((input) => input.value.trim()).filter(Boolean);
+  settings.categories = categories;
+  CATEGORY_SETTING_KEYS.forEach((key, index) => { settings[key] = categories[index] || ''; });
   for (const field of STOREFRONT_IMAGE_FIELDS) {
     const imageFile = formData.get(field.field);
     if (!(imageFile instanceof File) || !imageFile.size) continue;
@@ -635,6 +693,9 @@ document.querySelector('#orders-table').addEventListener('change', (event) => {
 document.querySelector('#product-form').addEventListener('submit', saveProduct);
 document.querySelector('#product-form input[name="image"]').addEventListener('change', previewSelectedProductImage);
 document.querySelector('#content-form').addEventListener('submit', saveContent);
+document.querySelector('#content-form').addEventListener('click', (event) => {
+  if (event.target.closest('[data-add-store-category]')) addStoreCategoryField();
+});
 document.querySelector('#team-search').addEventListener('input', renderMembers);
 document.querySelector('#team-table').addEventListener('click', (event) => {
   const roleButton = event.target.closest('[data-member-id]');
@@ -656,6 +717,11 @@ async function loadContent() {
   const { data, error } = await database.client.from('store_settings').select('value, updated_at').eq('key', 'homepage').maybeSingle();
   if (error) { showToast(`Could not load store content: ${error.message}`); return; }
   const settings = { ...(data?.value || {}) };
+  const categories = Array.isArray(settings.categories)
+    ? settings.categories
+    : CATEGORY_SETTING_KEYS.map((key, index) => settings[key] || LEGACY_CATEGORY_VALUES[index] || '');
+  syncCategoryFields(categories);
+  settings.categories = categories;
   settings.whatsapp = GREENHUB_WHATSAPP;
   STOREFRONT_IMAGE_FIELDS.forEach((field) => {
     settings[field.urlKey] = window.GreenhubStorage.resolveUrl(settings[field.urlKey], settings[field.pathKey]);
@@ -885,6 +951,7 @@ renderOrders();
 renderCustomers();
 refreshDashboardStats();
 ensureExtendedContentFields();
+syncCategoryFields(LEGACY_CATEGORY_VALUES);
 document.querySelectorAll('[data-storefront-image]').forEach((input) => input.addEventListener('change', previewSelectedStorefrontImage));
 loadContent();
 initializeAdminAuth();
