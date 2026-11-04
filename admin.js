@@ -13,6 +13,7 @@ const IMAGE_CONTENT_TYPES = Object.freeze({
 
 let ORDERS = [];
 let CUSTOMERS = [];
+let MEMBERS = [];
 let products = [];
 let editingProductId = null;
 let storefrontSettings = {};
@@ -76,6 +77,10 @@ function price(value) {
   return `€${Number(value).toFixed(2)}`;
 }
 
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
+}
+
 function artLetter(type) {
   return { 'art-rotor': '◉', 'art-filter': '▤', 'art-lamp': '◈', 'art-tensioner': '◎' }[type] || '◌';
 }
@@ -119,6 +124,65 @@ async function updateOrderStatus(orderId, status) {
 
 function renderCustomers() {
   document.querySelector('#customers-table').innerHTML = CUSTOMERS.map((customer) => `<tr><td><strong>${customer.name}</strong><br /><small>${customer.email}</small></td><td>${customer.location}</td><td>${customer.orders}</td><td>${price(customer.spent)}</td><td>${customer.lastOrder}</td><td><span class="tag-pill">${customer.segment}</span></td></tr>`).join('');
+}
+
+function renderMembers() {
+  const searchTerm = document.querySelector('#team-search')?.value.toLowerCase().trim() || '';
+  const visibleMembers = MEMBERS.filter((member) => {
+    const searchText = `${member.full_name || ''} ${member.email || ''} ${member.id}`.toLowerCase();
+    return !searchTerm || searchText.includes(searchTerm);
+  });
+  const adminCount = MEMBERS.filter((member) => member.role === 'admin').length;
+  const table = document.querySelector('#team-table');
+  if (!table) return;
+  document.querySelector('#nav-team-count').textContent = MEMBERS.length;
+  document.querySelector('#team-member-count').textContent = MEMBERS.length;
+  document.querySelector('#team-admin-count').textContent = adminCount;
+  document.querySelector('#team-toolbar-count').textContent = `${visibleMembers.length} member${visibleMembers.length === 1 ? '' : 's'}`;
+  if (!visibleMembers.length) {
+    table.innerHTML = '<tr><td colspan="5" class="team-empty">No members match this search.</td></tr>';
+    return;
+  }
+  table.innerHTML = visibleMembers.map((member) => {
+    const name = member.full_name || 'Unnamed member';
+    const email = member.email || 'Email unavailable';
+    const joined = member.created_at ? new Date(member.created_at).toLocaleDateString() : '—';
+    const isSelf = member.id === currentAdminUserId;
+    const role = member.role === 'admin' ? 'Admin' : 'Member';
+    const action = isSelf
+      ? '<span class="team-you">You</span>'
+      : member.role === 'admin'
+        ? `<button class="admin-button team-role-button revoke" type="button" data-member-id="${escapeHtml(member.id)}" data-member-role="customer">Revoke admin</button>`
+        : `<button class="admin-button team-role-button" type="button" data-member-id="${escapeHtml(member.id)}" data-member-role="admin">Grant admin</button>`;
+    return `<tr><td><strong>${escapeHtml(name)}</strong><br /><small>${escapeHtml(member.id)}</small></td><td>${escapeHtml(email)}</td><td>${escapeHtml(joined)}</td><td><span class="team-role ${member.role === 'admin' ? 'admin' : ''}"><i></i>${role}</span></td><td>${action}</td></tr>`;
+  }).join('');
+}
+
+async function loadMembers(silent = false) {
+  if (!database.configured) return;
+  const { data, error } = await database.client
+    .from('profiles')
+    .select('id, full_name, email, role, created_at')
+    .order('created_at', { ascending: false });
+  if (error) {
+    if (!silent) showToast(`Could not load team members: ${error.message}`);
+    return;
+  }
+  MEMBERS = data || [];
+  renderMembers();
+}
+
+async function updateMemberRole(memberId, role, button) {
+  if (!database.configured || !memberId || !role) return;
+  button.disabled = true;
+  const { error } = await database.client.rpc('set_member_role', { p_member_id: memberId, p_role: role });
+  button.disabled = false;
+  if (error) {
+    showToast(`Could not update member role: ${error.message}`);
+    return;
+  }
+  await loadMembers();
+  showToast(role === 'admin' ? 'Admin access granted' : 'Admin access revoked');
 }
 
 function refreshDashboardStats() {
@@ -533,6 +597,11 @@ document.querySelector('#orders-table').addEventListener('change', (event) => {
 document.querySelector('#product-form').addEventListener('submit', saveProduct);
 document.querySelector('#product-form input[name="image"]').addEventListener('change', previewSelectedProductImage);
 document.querySelector('#content-form').addEventListener('submit', saveContent);
+document.querySelector('#team-search').addEventListener('input', renderMembers);
+document.querySelector('#team-table').addEventListener('click', (event) => {
+  const roleButton = event.target.closest('[data-member-id]');
+  if (roleButton) updateMemberRole(roleButton.dataset.memberId, roleButton.dataset.memberRole, roleButton);
+});
 document.querySelector('#support-availability').addEventListener('change', setSupportAvailability);
 document.querySelector('#support-conversation-list').addEventListener('click', (event) => {
   const button = event.target.closest('[data-support-conversation]');
@@ -593,6 +662,7 @@ async function loadRemoteData() {
     renderOrders();
     renderCustomers();
     await loadContent();
+    await loadMembers();
   } catch (error) {
     showToast('Could not load Supabase data');
   }
@@ -614,8 +684,17 @@ const authModeToggle = document.querySelector('#auth-mode-toggle');
 const authSwitchCopy = document.querySelector('#auth-switch-copy');
 let authMode = 'signin';
 
-function setAuthMessage(message) {
+function setAuthMessage(message, type = 'error') {
   authMessage.textContent = message;
+  authMessage.classList.toggle('success', type === 'success');
+}
+
+function readableAuthError(error) {
+  const message = String(error?.message || error || 'Unknown error');
+  if (error?.status === 500 || /database error saving new user|error saving new user/i.test(message)) {
+    return 'Supabase could not finish creating the account. Run supabase/admin-management.sql in the Supabase SQL Editor as the database owner, then try again.';
+  }
+  return message;
 }
 
 function setAuthMode(mode) {
@@ -717,7 +796,7 @@ authForm.addEventListener('submit', async (event) => {
     if (redirectTo) options.emailRedirectTo = redirectTo;
     try {
       const { data, error } = await database.client.auth.signUp({ email, password, options });
-      if (error) { authSubmit.textContent = 'Create account'; setAuthMessage(error.message); return; }
+      if (error) { authSubmit.textContent = 'Create account'; setAuthMessage(readableAuthError(error)); return; }
       if (!data?.user) { authSubmit.textContent = 'Create account'; setAuthMessage('We could not create that account. Please try again.'); return; }
       if (data.session) {
         const { error: signOutError } = await database.client.auth.signOut();
@@ -729,10 +808,10 @@ authForm.addEventListener('submit', async (event) => {
       }
       authForm.reset();
       setAuthMode('signin');
-      setAuthMessage('Account created. Confirm your email if required, then have an existing administrator promote it to admin.');
+      setAuthMessage('Account created. Confirm your email if required, then have an existing administrator promote it to admin.', 'success');
     } catch (error) {
       authSubmit.textContent = 'Create account';
-      setAuthMessage(`Could not create account: ${error.message}`);
+      setAuthMessage(`Could not create account: ${readableAuthError(error)}`);
     } finally {
       button.disabled = false;
     }

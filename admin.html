@@ -20,6 +20,7 @@
           <button class="admin-nav-item" data-view="products"><span class="nav-icon">▦</span>Products <b id="nav-product-count">0</b></button>
           <button class="admin-nav-item" data-view="orders"><span class="nav-icon">↗</span>Orders <b>3</b></button>
           <button class="admin-nav-item" data-view="customers"><span class="nav-icon">◎</span>Customers</button>
+          <button class="admin-nav-item" data-view="team"><span class="nav-icon">♙</span>Team <b id="nav-team-count">0</b></button>
           <button class="admin-nav-item" data-view="support"><span class="nav-icon">◌</span>Support <b id="nav-support-count">0</b></button>
           <button class="admin-nav-item" data-view="content"><span class="nav-icon">✦</span>Store content</button>
         </nav>
@@ -52,6 +53,13 @@
           <div class="admin-page-heading"><div><p class="admin-kicker">YOUR COMMUNITY</p><h1>Customers</h1><p>Understand the people keeping their cars moving.</p></div><button class="admin-button secondary" data-action="export-customers">Download list ↓</button></div>
           <div class="customer-stats"><div><span>All customers</span><strong>1,284</strong><small>↑ 9.3% this month</small></div><div><span>New this month</span><strong>182</strong><small>↑ 14.1% this month</small></div><div><span>Average order</span><strong>€146</strong><small>↑ 4.8% this month</small></div></div>
           <article class="admin-panel table-panel"><div class="table-wrap"><table><thead><tr><th>Customer</th><th>Location</th><th>Orders</th><th>Spent</th><th>Last order</th><th>Segment</th></tr></thead><tbody id="customers-table"></tbody></table></div></article>
+        </section>
+
+        <section class="admin-view" id="team-view">
+          <div class="admin-page-heading"><div><p class="admin-kicker">ACCESS CONTROL</p><h1>Team &amp; admins</h1><p>Review new members and grant admin access to trusted people.</p></div><span class="content-status">Protected by Supabase RLS</span></div>
+          <div class="team-summary"><div><span>All members</span><strong id="team-member-count">0</strong><small>Accounts registered in Greenhub</small></div><div><span>Administrators</span><strong id="team-admin-count">0</strong><small>People with console access</small></div></div>
+          <div class="toolbar"><label class="admin-search"><span>⌕</span><input id="team-search" type="search" placeholder="Search members…" /></label><span class="toolbar-count" id="team-toolbar-count">0 members</span></div>
+          <article class="admin-panel table-panel"><div class="table-wrap"><table><thead><tr><th>Member</th><th>Account</th><th>Joined</th><th>Role</th><th></th></tr></thead><tbody id="team-table"><tr><td colspan="5" class="team-empty">No members found.</td></tr></tbody></table></div></article>
         </section>
 
         <section class="admin-view" id="support-view">

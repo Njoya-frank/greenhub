@@ -46,7 +46,7 @@ The values in `.env` and `.env.local` are intentionally ignored by Git and are n
 The admin console uses Supabase Auth and only allows users whose profile role is `admin`.
 
 1. Create a Supabase project and run the complete `supabase/schema.sql` in the Supabase Dashboard SQL Editor or a PostgreSQL owner connection. Do not send this file through an API key: `anon`/`authenticated` roles cannot create schemas, types, triggers, or policies. It creates the tables, RLS policies, product image metadata columns, and the public `greenhub` Storage bucket. If you already ran an older version, run the updated file so its `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` repairs existing tables.
-2. Open `admin.html` and use **Sign up** to create an account, or create the first user in Supabase Authentication → Users. New signups start as `customer` for safety.
+2. Open `admin.html` and use **Sign up** to create an account, or create the first user in Supabase Authentication → Users. New signups start as `customer` for safety. The signup trigger also stores the member email in `profiles` so an administrator can manage access from the Team screen.
 3. Promote that user with the user UUID. Run this in the Supabase Dashboard SQL Editor (or a PostgreSQL connection as the database owner), not through `supabase-js` or the browser:
 
 ```sql
@@ -60,6 +60,8 @@ where not exists (select 1 from public.profiles where id = 'USER_UUID');
 ```
 
 You can copy the UUID from Authentication → Users. The `authenticated` API role cannot read `auth.users` or change admin roles, so a `permission denied for table users` error means this statement was sent through the client instead of an owner SQL connection.
+
+After the first admin can sign in, open **Team & admins** in the console. New members appear there as `Member`; use **Grant admin** to give a trusted account console access, or **Revoke admin** to remove it. The database function prevents the current admin from revoking their own access and keeps at least one administrator. If signup returns HTTP 500 / `Database error saving new user`, run `supabase/admin-management.sql` once in the Supabase SQL Editor as the database owner to repair the profile trigger and apply the role-management migration.
 
 4. Store the values in `.env.local` or `.env`:
 
@@ -92,4 +94,4 @@ The storefront support widget uses the `support_presence`, `support_conversation
 
 ## Admin console
 
-Open `http://localhost:4173/admin.html` to manage products, upload product and storefront images, review orders and customers, change order status, update storefront messaging, and answer support conversations. Product, content, order, customer, support, newsletter, and image data load from Supabase; the storefront does not silently replace a missing catalogue with mock products.
+Open `http://localhost:4173/admin.html` to manage products, upload product and storefront images, review orders and customers, manage team roles, change order status, update storefront messaging, and answer support conversations. Product, content, order, customer, team, support, newsletter, and image data load from Supabase; the storefront does not silently replace a missing catalogue with mock products.
