@@ -20,7 +20,7 @@ let products = [];
 let catalogueLoaded = false;
 let catalogueError = '';
 
-const state = { filter: 'All', query: '', sort: 'featured', cart: [], wishes: new Set(), payment: 'card', giftCardDiscount: 0, giftCardCode: '' };
+const state = { filter: 'All', query: '', sort: 'featured', cart: [], wishes: new Set(), payment: 'bitcoin', giftCardDiscount: 0, giftCardCode: '' };
 const supportState = { configured: false, initialized: false, available: false, visitorToken: '', conversationId: '', messages: [], lastRenderKey: '', pollTimer: null, initPromise: null };
 const productGrid = document.querySelector('#product-grid');
 const emptyState = document.querySelector('#empty-state');
@@ -154,6 +154,43 @@ function setFilter(filter) {
   renderProducts();
 }
 
+const CATEGORY_SETTING_KEYS = ['category1', 'category2', 'category3', 'category4'];
+
+function storeCategories(settings = {}) {
+  const configured = CATEGORY_SETTING_KEYS.map((key) => settings[key]).map((value) => String(value || '').trim()).filter(Boolean);
+  const catalogueCategories = products.map((product) => String(product.category || '').trim()).filter(Boolean);
+  return [...new Set(configured.length ? configured : catalogueCategories)];
+}
+
+function renderCategoryControls(settings = {}) {
+  const categories = storeCategories(settings);
+  const categorySection = document.querySelector('#categories');
+  const categoryCards = document.querySelectorAll('[data-category-slot]');
+  if (categorySection) categorySection.hidden = !categories.length;
+  categoryCards.forEach((card, index) => {
+    const category = categories[index] || '';
+    card.hidden = !category;
+    if (!category) return;
+    card.dataset.categoryLink = category;
+    const label = card.querySelector('[data-setting]');
+    if (label) label.textContent = category;
+  });
+  const filterTabs = document.querySelector('.filter-tabs');
+  if (filterTabs) {
+    filterTabs.querySelectorAll('[data-dynamic-category]').forEach((button) => button.remove());
+    categories.forEach((category) => {
+      const button = document.createElement('button');
+      button.className = 'filter-tab';
+      button.type = 'button';
+      button.dataset.filter = category;
+      button.dataset.dynamicCategory = 'true';
+      button.textContent = category;
+      filterTabs.appendChild(button);
+    });
+  }
+  if (state.filter !== 'All' && !categories.includes(state.filter)) setFilter('All');
+}
+
 function observeReveals() {
   const revealItems = document.querySelectorAll('.reveal:not(.visible)');
   if (!('IntersectionObserver' in window)) {
@@ -171,9 +208,15 @@ function observeReveals() {
   revealItems.forEach((item) => observer.observe(item));
 }
 
-document.querySelectorAll('.filter-tab').forEach((button) => button.addEventListener('click', () => setFilter(button.dataset.filter)));
+document.querySelector('.filter-tabs').addEventListener('click', (event) => {
+  const button = event.target.closest('.filter-tab');
+  if (button) setFilter(button.dataset.filter);
+});
 document.querySelector('#sort-select').addEventListener('change', (event) => { state.sort = event.target.value; renderProducts(); });
-document.querySelectorAll('[data-category-link]').forEach((link) => link.addEventListener('click', () => setFilter(link.dataset.categoryLink)));
+document.querySelector('.category-grid').addEventListener('click', (event) => {
+  const link = event.target.closest('[data-category-link]');
+  if (link) setFilter(link.dataset.categoryLink);
+});
 
 productGrid.addEventListener('click', (event) => {
   const addButton = event.target.closest('[data-add]');
@@ -209,21 +252,18 @@ document.querySelector('.drawer-close').addEventListener('click', closeCart);
 backdrop.addEventListener('click', closeCart);
 const checkoutModal = document.querySelector('#checkout-modal');
 const checkoutForm = document.querySelector('#checkout-form');
-const cardFields = document.querySelector('#card-fields');
 const giftcardFields = document.querySelector('#giftcard-fields');
 const paymentNotice = document.querySelector('#payment-method-notice');
 const paymentSecurity = document.querySelector('#checkout-security');
-const paymentMessages = { card: 'Secure card payment with Visa, Mastercard and 3-D Secure.', paypal: 'You will be redirected to PayPal to approve your payment.', applepay: 'Apple Pay will open securely on a supported Apple device.', googlepay: 'Google Pay will open securely on a supported device.', klarna: 'Klarna lets you spread the cost. Availability depends on your location.', sepa: 'SEPA Direct Debit is available for supported euro-area bank accounts.', ideal: 'iDEAL securely connects you to your Dutch bank to approve payment.', bancontact: 'Bancontact securely connects you to your Belgian bank to approve payment.', sofort: 'Sofort securely connects you to your online banking provider.', giftcard: 'Enter a valid Greenhub gift card code to apply your balance.', bitcoin: 'Bitcoin payment is selected. Follow the payment instructions to complete your order.', cash: 'Cash payment is selected. Pay when your order is delivered.' };
-const paymentLabels = { card: 'Pay securely', paypal: 'Continue to PayPal', applepay: 'Pay with Apple Pay', googlepay: 'Pay with Google Pay', klarna: 'Continue with Klarna', sepa: 'Set up SEPA debit', ideal: 'Pay with iDEAL', bancontact: 'Pay with Bancontact', sofort: 'Continue with Sofort', giftcard: 'Redeem gift card', bitcoin: 'Continue with Bitcoin', cash: 'Place cash order' };
-const paymentSecurityMessages = { card: '🔒 Payments are encrypted and processed securely. Your card details never touch our store.', bitcoin: '₿ Bitcoin payment instructions will be provided after you confirm your order.', cash: '✓ Pay in cash when your order is delivered.' };
+const paymentMessages = { giftcard: 'Enter a valid Greenhub gift card code to apply your balance.', bitcoin: 'Bitcoin payment is selected. Follow the payment instructions to complete your order.', revolut: 'Revolut Bank transfer is selected. Follow the payment instructions to complete your order.' };
+const paymentLabels = { giftcard: 'Redeem gift card', bitcoin: 'Continue with Bitcoin', revolut: 'Continue with Revolut' };
+const paymentSecurityMessages = { bitcoin: '₿ Bitcoin payment instructions will be provided after you confirm your order.', giftcard: '✦ Your gift card balance is applied before the order is submitted.', revolut: '↗ Revolut Bank transfer instructions will be provided after you confirm your order.' };
 
 function selectPayment(payment) {
   state.payment = payment;
   document.querySelectorAll('.payment-method').forEach((button) => button.classList.toggle('active', button.dataset.payment === payment));
   paymentNotice.textContent = paymentMessages[payment];
-  cardFields.hidden = payment !== 'card';
   giftcardFields.hidden = payment !== 'giftcard';
-  cardFields.querySelectorAll('[data-card-field]').forEach((field) => { field.required = payment === 'card'; });
   document.querySelector('#pay-button-label').textContent = paymentLabels[payment];
   paymentSecurity.textContent = paymentSecurityMessages[payment] || '🔒 Your payment is processed securely by the selected provider.';
   renderCheckoutSummary();
@@ -405,9 +445,10 @@ function getBotReply(input) {
   if (message.includes('order') || message.includes('track') || message.includes('delivery') || message.includes('ship')) return 'For an order update, reply with your <strong>order number</strong> (it starts with HW-). Orders usually leave our workshop within 24 hours.';
   if (message.includes('return') || message.includes('warranty') || message.includes('refund')) return 'You have <strong>30 days</strong> to return unused parts in their original packaging. Every Greenhub part also includes a 2-year fitment guarantee. <a href="#footer">Read the full returns policy →</a>';
   if (message.includes('person') || message.includes('human') || message.includes('agent') || message.includes('talk')) return `Of course. Our support team is online Mon–Fri, 08:00–18:00. <a href="https://wa.me/${GREENHUB_WHATSAPP}" target="_blank" rel="noreferrer">Chat on WhatsApp →</a> or send us a message on Telegram.`;
-  if (message.includes('brake')) return 'For brakes, start with your exact make, model and year. You can also browse our <button class="inline-chat-action" data-chat-filter="Brakes">braking parts →</button>.';
-  if (message.includes('engine') || message.includes('filter')) return 'Our engine and air range covers filters, belts and intake parts. Browse <button class="inline-chat-action" data-chat-filter="Engine">engine parts →</button>.';
-  if (message.includes('light') || message.includes('lamp')) return 'For headlights and signal lamps, check the side and bulb type first. Browse <button class="inline-chat-action" data-chat-filter="Lighting">lighting parts →</button>.';
+  const requestedCategory = [...document.querySelectorAll('.filter-tab[data-filter]:not([data-filter="All"])')]
+    .map((button) => button.dataset.filter)
+    .find((category) => message.includes(category.toLowerCase()));
+  if (requestedCategory) return `Browse our <button class="inline-chat-action" data-chat-filter="${escapeHtml(requestedCategory)}">${escapeHtml(requestedCategory.toLowerCase())} parts →</button>.`;
   return 'I can help with <strong>finding a part, order tracking, returns, or connecting you to a person</strong>. Try one of the buttons below or tell me what you need.';
 }
 
@@ -622,6 +663,7 @@ function applySettings(remoteSettings = null) {
     const value = settings[element.dataset.setting];
     if (value !== undefined && value !== null) element.textContent = value;
   });
+  renderCategoryControls(settings);
   const announcementCopy = document.querySelector('.announcement > span:first-child');
   const heroIntro = document.querySelector('.hero-intro');
   if (settings.announcement && announcementCopy) announcementCopy.textContent = settings.announcement;
@@ -679,6 +721,7 @@ async function loadPublicStoreData() {
   }
   if (settingsResponse.error) console.error('[Greenhub] Could not load store content:', settingsResponse.error.message);
   else if (settingsResponse.data?.value) applySettings(settingsResponse.data.value);
+  else renderCategoryControls();
   catalogueLoaded = true;
   renderProducts();
 }

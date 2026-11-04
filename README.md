@@ -14,7 +14,7 @@ Then open `http://localhost:4173` (do not double-click the HTML files or open th
 
 The page includes responsive navigation, product filtering, search, sorting, wishlist toggles, a shopping bag drawer, and a newsletter interaction. Product and brand copy are original placeholders ready to be replaced with real catalog data.
 
-The demo checkout also includes European payment choices: cards, PayPal, Apple Pay, Google Pay, Klarna, SEPA Direct Debit, iDEAL, Bancontact, Sofort, and Greenhub gift cards.
+The demo checkout supports Bitcoin, Greenhub gift cards, and Revolut Bank transfers.
 
 Payment selection and gift-card redemption are frontend demo flows. Connect a provider such as Stripe, Adyen, or Mollie plus a server-side order endpoint before accepting real payments.
 
@@ -94,4 +94,4 @@ The storefront support widget uses the `support_presence`, `support_conversation
 
 ## Admin console
 
-Open `http://localhost:4173/admin.html` to manage products, upload product and storefront images, review orders and customers, manage team roles, change order status, update storefront messaging, and answer support conversations. Product, content, order, customer, team, support, newsletter, and image data load from Supabase; the storefront does not silently replace a missing catalogue with mock products.
+Open `http://localhost:4173/admin.html` to manage products, upload product and storefront images, review orders and customers, manage team roles, change order status, update storefront messaging, and answer support conversations. Product categories are configured under **Store content** and are used by the product form, storefront category cards, and filters. Product, content, order, customer, team, support, newsletter, and image data load from Supabase; the storefront does not silently replace a missing catalogue with mock products.

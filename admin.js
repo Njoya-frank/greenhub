@@ -23,6 +23,10 @@ let activeSupportConversationId = null;
 let supportPollTimer = null;
 let supportIsAvailable = false;
 
+const CATEGORY_SETTING_KEYS = ['category1', 'category2', 'category3', 'category4'];
+const LEGACY_CATEGORY_SETTING_KEYS = ['categoryBrakes', 'categoryEngine', 'categoryLighting', 'categorySuspension'];
+const LEGACY_CATEGORY_VALUES = ['Brakes', 'Engine', 'Lighting', 'Suspension'];
+
 const STOREFRONT_IMAGE_FIELDS = [
   { field: 'heroImage', urlKey: 'heroImageUrl', pathKey: 'heroImagePath', previewId: 'hero-image-preview', label: 'Hero image' },
   { field: 'storyImage', urlKey: 'storyImageUrl', pathKey: 'storyImagePath', previewId: 'story-image-preview', label: 'Our standard image' },
@@ -79,6 +83,39 @@ function price(value) {
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
+}
+
+function configuredCategories(settings = storefrontSettings) {
+  const formCategories = CATEGORY_SETTING_KEYS.map((key) => document.querySelector(`#content-form [name="${key}"]`)?.value);
+  const settingCategories = CATEGORY_SETTING_KEYS.map((key, index) => settings[key] || settings[LEGACY_CATEGORY_SETTING_KEYS[index]] || '');
+  const productCategories = products.map((product) => product.category);
+  const configured = [...formCategories, ...settingCategories].map((value) => String(value || '').trim()).filter(Boolean);
+  const values = configured.length ? configured : productCategories.map((value) => String(value || '').trim()).filter(Boolean);
+  return [...new Set(values)];
+}
+
+function refreshCategoryControls() {
+  const categories = configuredCategories();
+  const filter = document.querySelector('#product-filter');
+  const datalist = document.querySelector('#product-category-options');
+  if (filter) {
+    const currentValue = filter.value;
+    filter.innerHTML = '<option value="All">All categories</option>';
+    categories.forEach((category) => {
+      const option = document.createElement('option');
+      option.value = category;
+      option.textContent = category;
+      filter.appendChild(option);
+    });
+    filter.value = categories.includes(currentValue) ? currentValue : 'All';
+  }
+  if (datalist) {
+    datalist.replaceChildren(...categories.map((category) => {
+      const option = document.createElement('option');
+      option.value = category;
+      return option;
+    }));
+  }
 }
 
 function artLetter(type) {
@@ -555,6 +592,7 @@ async function saveContent(event) {
     .single();
   if (error) { showToast(`Could not save content: ${error.message}`); return; }
   storefrontSettings = savedSettings?.value || settings;
+  refreshCategoryControls();
   try {
     localStorage.setItem(STOREFRONT_SETTINGS_SYNC_KEY, String(Date.now()));
   } catch (storageError) {
@@ -625,6 +663,7 @@ async function loadContent() {
   storefrontSettings = settings;
   Object.entries(settings).forEach(([key, value]) => { if (document.querySelector(`#content-form [name="${key}"]`)) document.querySelector(`#content-form [name="${key}"]`).value = value; });
   STOREFRONT_IMAGE_FIELDS.forEach((field) => setImagePreviewElement(document.querySelector(`#${field.previewId}`), settings[field.urlKey] || '', field.label));
+  refreshCategoryControls();
 }
 
 function ensureExtendedContentFields() {
@@ -632,7 +671,7 @@ function ensureExtendedContentFields() {
   if (!form || form.dataset.extended === 'true') return;
   const panel = document.createElement('article');
   panel.className = 'admin-panel content-panel extended-content-panel';
-  panel.innerHTML = `<div class="panel-heading"><div><p class="admin-kicker">HOMEPAGE</p><h2>Homepage controls</h2></div><span class="content-status">Editable storefront copy</span></div><div class="form-grid"><label>Hero eyebrow<input name="heroEyebrow" type="text" value="THE NEW STANDARD IN SPARES" /></label><label>Brand strip label<input name="brandStripLabel" type="text" value="BUILT FOR" /></label><label>Hero title line 1<input name="heroTitleLine1" type="text" value="Parts that fit." /></label><label>Hero title line 2<input name="heroTitleLine2" type="text" value="Every time." /></label><label>Shop button<input name="heroShopCta" type="text" value="Shop all parts" /></label><label>Browse button<input name="heroBrowseCta" type="text" value="Browse by system" /></label></div><div class="form-grid"><label>Category eyebrow<input name="categoryEyebrow" type="text" value="FIND YOUR FIT" /></label><label>Category title<input name="categoryTitle" type="text" value="Start with your car." /></label><label>Brakes category<input name="categoryBrakes" type="text" value="Braking" /></label><label>Engine category<input name="categoryEngine" type="text" value="Engine & air" /></label><label>Lighting category<input name="categoryLighting" type="text" value="Lighting" /></label><label>Suspension category<input name="categorySuspension" type="text" value="Suspension" /></label></div><div class="form-grid"><label>Story eyebrow<input name="storyEyebrow" type="text" value="WHY GREENHUB" /></label><label>Story link label<input name="storyLink" type="text" value="More about our standard" /></label><label>Newsletter eyebrow<input name="newsletterEyebrow" type="text" value="KEEP MOVING" /></label><label>Newsletter title line 1<input name="newsletterTitleLine1" type="text" value="Better parts." /></label><label>Newsletter title line 2<input name="newsletterTitleLine2" type="text" value="Better journeys." /></label><label>Footer intro<input name="footerIntro" type="text" value="For the road ahead. For the work under the hood." /></label></div><div class="storefront-image-grid"><label>Hero image<input name="heroImage" type="file" accept="image/*" data-storefront-image="heroImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="hero-image-preview"><span>No image uploaded</span></div></label><label>Our standard image<input name="storyImage" type="file" accept="image/*" data-storefront-image="storyImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="story-image-preview"><span>No image uploaded</span></div></label><label>Brakes category image<input name="categoryBrakesImage" type="file" accept="image/*" data-storefront-image="categoryBrakesImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="category-brakes-image-preview"><span>No image uploaded</span></div></label><label>Engine category image<input name="categoryEngineImage" type="file" accept="image/*" data-storefront-image="categoryEngineImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="category-engine-image-preview"><span>No image uploaded</span></div></label><label>Lighting category image<input name="categoryLightingImage" type="file" accept="image/*" data-storefront-image="categoryLightingImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="category-lighting-image-preview"><span>No image uploaded</span></div></label><label>Suspension category image<input name="categorySuspensionImage" type="file" accept="image/*" data-storefront-image="categorySuspensionImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="category-suspension-image-preview"><span>No image uploaded</span></div></label></div>`;
+  panel.innerHTML = `<div class="panel-heading"><div><p class="admin-kicker">HOMEPAGE</p><h2>Homepage controls</h2></div><span class="content-status">Editable storefront copy</span></div><div class="form-grid"><label>Hero eyebrow<input name="heroEyebrow" type="text" value="THE NEW STANDARD IN SPARES" /></label><label>Brand strip label<input name="brandStripLabel" type="text" value="BUILT FOR" /></label><label>Hero title line 1<input name="heroTitleLine1" type="text" value="Parts that fit." /></label><label>Hero title line 2<input name="heroTitleLine2" type="text" value="Every time." /></label><label>Shop button<input name="heroShopCta" type="text" value="Shop all parts" /></label><label>Browse button<input name="heroBrowseCta" type="text" value="Browse by system" /></label></div><div class="form-grid"><label>Category eyebrow<input name="categoryEyebrow" type="text" value="FIND YOUR FIT" /></label><label>Category title<input name="categoryTitle" type="text" value="Start with your car." /></label><label>Product category 1<input name="category1" type="text" value="Brakes" placeholder="e.g. Braking" /></label><label>Product category 2<input name="category2" type="text" value="Engine" placeholder="e.g. Engine & air" /></label><label>Product category 3<input name="category3" type="text" value="Lighting" placeholder="e.g. Lighting" /></label><label>Product category 4<input name="category4" type="text" value="Suspension" placeholder="e.g. Suspension" /></label></div><div class="form-grid"><label>Story eyebrow<input name="storyEyebrow" type="text" value="WHY GREENHUB" /></label><label>Story link label<input name="storyLink" type="text" value="More about our standard" /></label><label>Newsletter eyebrow<input name="newsletterEyebrow" type="text" value="KEEP MOVING" /></label><label>Newsletter title line 1<input name="newsletterTitleLine1" type="text" value="Better parts." /></label><label>Newsletter title line 2<input name="newsletterTitleLine2" type="text" value="Better journeys." /></label><label>Footer intro<input name="footerIntro" type="text" value="For the road ahead. For the work under the hood." /></label></div><div class="storefront-image-grid"><label>Hero image<input name="heroImage" type="file" accept="image/*" data-storefront-image="heroImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="hero-image-preview"><span>No image uploaded</span></div></label><label>Our standard image<input name="storyImage" type="file" accept="image/*" data-storefront-image="storyImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="story-image-preview"><span>No image uploaded</span></div></label><label>Category 1 image<input name="categoryBrakesImage" type="file" accept="image/*" data-storefront-image="categoryBrakesImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="category-brakes-image-preview"><span>No image uploaded</span></div></label><label>Category 2 image<input name="categoryEngineImage" type="file" accept="image/*" data-storefront-image="categoryEngineImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="category-engine-image-preview"><span>No image uploaded</span></div></label><label>Category 3 image<input name="categoryLightingImage" type="file" accept="image/*" data-storefront-image="categoryLightingImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="category-lighting-image-preview"><span>No image uploaded</span></div></label><label>Category 4 image<input name="categorySuspensionImage" type="file" accept="image/*" data-storefront-image="categorySuspensionImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="category-suspension-image-preview"><span>No image uploaded</span></div></label></div>`;
   const actions = form.querySelector('.content-actions')?.closest('article');
   form.insertBefore(panel, actions || null);
   form.dataset.extended = 'true';
@@ -658,6 +697,7 @@ async function loadRemoteData() {
     document.querySelector('#metric-customers').textContent = CUSTOMERS.length;
     refreshDashboardStats();
     saveProducts();
+    refreshCategoryControls();
     renderProducts();
     renderOrders();
     renderCustomers();

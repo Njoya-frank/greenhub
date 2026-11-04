@@ -148,5 +148,14 @@ grant select on public.profiles to authenticated;
 grant usage on type public.app_role to authenticated;
 grant execute on function public.set_member_role(uuid, public.app_role) to authenticated;
 
+-- Categories are configured in the admin Store content screen, not fixed in
+-- the database schema. This repairs the original four-category constraint.
+do $$
+begin
+  if to_regclass('public.products') is not null then
+    alter table public.products drop constraint if exists products_category_check;
+  end if;
+end $$;
+
 -- If the first admin was already created, this is not needed. Otherwise run:
 -- update public.profiles set role = 'admin' where id = 'AUTH_USER_UUID';
