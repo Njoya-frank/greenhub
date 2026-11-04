@@ -30,10 +30,10 @@ const LEGACY_CATEGORY_VALUES = ['Brakes', 'Engine', 'Lighting', 'Suspension'];
 const STOREFRONT_IMAGE_FIELDS = [
   { field: 'heroImage', urlKey: 'heroImageUrl', pathKey: 'heroImagePath', previewId: 'hero-image-preview', label: 'Hero image' },
   { field: 'storyImage', urlKey: 'storyImageUrl', pathKey: 'storyImagePath', previewId: 'story-image-preview', label: 'Our standard image' },
-  { field: 'categoryBrakesImage', urlKey: 'categoryBrakesImageUrl', pathKey: 'categoryBrakesImagePath', previewId: 'category-brakes-image-preview', label: 'Brakes category image' },
-  { field: 'categoryEngineImage', urlKey: 'categoryEngineImageUrl', pathKey: 'categoryEngineImagePath', previewId: 'category-engine-image-preview', label: 'Engine category image' },
-  { field: 'categoryLightingImage', urlKey: 'categoryLightingImageUrl', pathKey: 'categoryLightingImagePath', previewId: 'category-lighting-image-preview', label: 'Lighting category image' },
-  { field: 'categorySuspensionImage', urlKey: 'categorySuspensionImageUrl', pathKey: 'categorySuspensionImagePath', previewId: 'category-suspension-image-preview', label: 'Suspension category image' }
+  { field: 'categoryBrakesImage', urlKey: 'categoryBrakesImageUrl', pathKey: 'categoryBrakesImagePath', previewId: 'category-brakes-image-preview', label: 'Brakes category image', categoryIndex: 0 },
+  { field: 'categoryEngineImage', urlKey: 'categoryEngineImageUrl', pathKey: 'categoryEngineImagePath', previewId: 'category-engine-image-preview', label: 'Engine category image', categoryIndex: 1 },
+  { field: 'categoryLightingImage', urlKey: 'categoryLightingImageUrl', pathKey: 'categoryLightingImagePath', previewId: 'category-lighting-image-preview', label: 'Lighting category image', categoryIndex: 2 },
+  { field: 'categorySuspensionImage', urlKey: 'categorySuspensionImageUrl', pathKey: 'category-suspension-image-preview', label: 'Suspension category image', categoryIndex: 3 }
 ];
 
 function saveProducts() {
@@ -85,6 +85,19 @@ function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
 }
 
+function cleanStorefrontCopy(settings = {}) {
+  const cleaned = { ...settings };
+  Object.keys(cleaned).forEach((key) => {
+    if (typeof cleaned[key] !== 'string' || /(url|path|email|whatsapp)/i.test(key)) return;
+    cleaned[key] = cleaned[key]
+      .replace(/\bparts that fit\b/gi, 'built to fit')
+      .replace(/\b(?:spare|replacement) parts?\b/gi, 'replacement products')
+      .replace(/\bpart number\b/gi, 'reference number')
+      .replace(/\bparts?\b/gi, 'products');
+  });
+  return cleaned;
+}
+
 function configuredCategories(settings = storefrontSettings) {
   const formCategories = [...document.querySelectorAll('#content-form input')]
     .filter((input) => /^category\d+$/.test(input.name))
@@ -128,7 +141,15 @@ function categoryFieldInputs() {
     .sort((a, b) => Number(a.name.replace('category', '')) - Number(b.name.replace('category', '')));
 }
 
-function createCategoryField(index, value = '') {
+function categoryImageUrls(settings = storefrontSettings) {
+  if (Array.isArray(settings.categoryImageUrls)) return settings.categoryImageUrls;
+  return STOREFRONT_IMAGE_FIELDS
+    .filter((field) => field.categoryIndex !== undefined)
+    .sort((a, b) => a.categoryIndex - b.categoryIndex)
+    .map((field) => settings[field.urlKey] || '');
+}
+
+function createCategoryField(index, value = '', imageUrl = '') {
   const label = document.createElement('label');
   label.textContent = `Product category ${index}`;
   const input = document.createElement('input');
@@ -137,18 +158,41 @@ function createCategoryField(index, value = '') {
   input.placeholder = 'e.g. Accessories';
   input.value = value;
   label.appendChild(input);
+  const imageLabel = document.createElement('small');
+  imageLabel.className = 'field-help';
+  imageLabel.textContent = 'Category image';
+  label.appendChild(imageLabel);
+  const imageInput = document.createElement('input');
+  imageInput.name = `categoryImage${index}`;
+  imageInput.type = 'file';
+  imageInput.accept = 'image/*';
+  imageInput.dataset.categoryImageIndex = String(index - 1);
+  imageInput.addEventListener('change', previewSelectedCategoryImage);
+  label.appendChild(imageInput);
+  const preview = document.createElement('div');
+  preview.className = 'storefront-image-preview category-image-preview';
+  preview.dataset.categoryImagePreview = String(index - 1);
+  preview.appendChild(document.createElement('span')).textContent = imageUrl ? 'Current image' : 'No image uploaded';
+  label.appendChild(preview);
+  if (imageUrl) setImagePreviewElement(preview, imageUrl, `Category ${index} image`);
   return label;
 }
 
-function syncCategoryFields(categories = []) {
+function syncCategoryFields(categories = [], imageUrls = categoryImageUrls()) {
   const firstInput = document.querySelector('#content-form input[name="category1"]');
   const group = firstInput?.closest('.form-grid');
   if (!group) return;
   const values = categories.map((category) => String(category || '').trim());
   const inputs = categoryFieldInputs();
-  values.slice(inputs.length).forEach((value, offset) => group.insertBefore(createCategoryField(inputs.length + offset + 1, value), group.querySelector('[data-add-store-category]')));
+  values.slice(inputs.length).forEach((value, offset) => {
+    const index = inputs.length + offset + 1;
+    group.insertBefore(createCategoryField(index, value, imageUrls[index - 1] || ''), group.querySelector('[data-add-store-category]'));
+  });
   categoryFieldInputs().forEach((input, index) => {
     input.value = values[index] || '';
+    const imageInput = input.closest('label')?.querySelector('input[data-category-image-index]');
+    const preview = input.closest('label')?.querySelector('[data-category-image-preview]');
+    if (imageInput && preview && imageUrls[index]) setImagePreviewElement(preview, imageUrls[index], `Category ${index + 1} image`);
   });
   let addButton = group.querySelector('[data-add-store-category]');
   if (!addButton) {
@@ -167,20 +211,28 @@ function addStoreCategoryField() {
   if (!group) return;
   const nextIndex = categoryFieldInputs().length + 1;
   const addButton = group.querySelector('[data-add-store-category]');
-  const field = createCategoryField(nextIndex);
+  const field = createCategoryField(nextIndex, '', categoryImageUrls()[nextIndex - 1] || '');
   group.insertBefore(field, addButton || null);
   field.querySelector('input').focus();
   refreshCategoryControls();
 }
 
-function artLetter(type) {
-  return { 'art-rotor': '◉', 'art-filter': '▤', 'art-lamp': '◈', 'art-tensioner': '◎' }[type] || '◌';
-}
-
 function productImageMarkup(product) {
   return product.imageUrl
-    ? `<img class="table-product-image" src="${product.imageUrl}" alt="" />`
-    : `<span class="table-art">${artLetter(product.type)}</span>`;
+    ? `<img class="table-product-image" data-empty-fallback src="${product.imageUrl}" alt="" /><span class="table-image-empty" hidden>No image</span>`
+    : '<span class="table-image-empty">No image</span>';
+}
+
+function bindMissingProductImages() {
+  document.querySelectorAll('#products-table img[data-empty-fallback]').forEach((image) => {
+    const showFallback = () => {
+      image.hidden = true;
+      const fallback = image.nextElementSibling;
+      if (fallback?.classList.contains('table-image-empty')) fallback.hidden = false;
+    };
+    image.addEventListener('error', showFallback, { once: true });
+    if (image.complete && image.naturalWidth === 0) showFallback();
+  });
 }
 
 function renderProducts() {
@@ -193,6 +245,7 @@ function renderProducts() {
   });
   document.querySelector('#toolbar-count').textContent = `${visibleProducts.length} product${visibleProducts.length === 1 ? '' : 's'}`;
   document.querySelector('#products-table').innerHTML = visibleProducts.map((product) => `<tr><td><div class="table-product">${productImageMarkup(product)}<span>${product.name}</span></div></td><td><span class="category-pill">${product.category}</span></td><td>${price(product.price)}</td><td><span class="tag-pill">${product.tag}</span></td><td><span class="visibility ${product.active === false ? 'hidden' : ''}"><i></i>${product.active === false ? 'Hidden' : 'Live'}</span></td><td><div class="row-actions"><button data-edit-product="${product.id}" aria-label="Edit ${product.name}">✎</button><button class="delete" data-delete-product="${product.id}" aria-label="Delete ${product.name}">×</button></div></td></tr>`).join('');
+  bindMissingProductImages();
 }
 
 function renderOrders() {
@@ -530,6 +583,26 @@ function previewSelectedStorefrontImage(event) {
   preview.dataset.objectUrl = objectUrl;
 }
 
+function previewSelectedCategoryImage(event) {
+  const imageInput = event.currentTarget;
+  const preview = imageInput.closest('label')?.querySelector('[data-category-image-preview]');
+  const index = Number(imageInput.dataset.categoryImageIndex);
+  if (!preview || !Number.isInteger(index)) return;
+  const file = imageInput.files?.[0];
+  if (!file) {
+    setImagePreviewElement(preview, categoryImageUrls()[index] || '', `Category ${index + 1} image`);
+    return;
+  }
+  const contentType = validateImageFile(file, `Category ${index + 1} image`);
+  if (!contentType) {
+    imageInput.value = '';
+    return;
+  }
+  const objectUrl = URL.createObjectURL(file);
+  setImagePreviewElement(preview, objectUrl, `Category ${index + 1} image`, file.name);
+  preview.dataset.objectUrl = objectUrl;
+}
+
 function openProductModal(productId = null) {
   const modal = document.querySelector('#product-modal');
   const form = document.querySelector('#product-form');
@@ -626,6 +699,8 @@ async function saveContent(event) {
   const categories = categoryFieldInputs().map((input) => input.value.trim()).filter(Boolean);
   settings.categories = categories;
   CATEGORY_SETTING_KEYS.forEach((key, index) => { settings[key] = categories[index] || ''; });
+  const categoryUrls = [...categoryImageUrls(settings)];
+  const categoryPaths = Array.isArray(settings.categoryImagePaths) ? [...settings.categoryImagePaths] : [];
   for (const field of STOREFRONT_IMAGE_FIELDS) {
     const imageFile = formData.get(field.field);
     if (!(imageFile instanceof File) || !imageFile.size) continue;
@@ -636,13 +711,38 @@ async function saveContent(event) {
     const { error: uploadError } = await database.client.storage.from(STORAGE_BUCKET).upload(imagePath, imageFile, { upsert: false, cacheControl: '3600', contentType });
     if (uploadError) { showToast(`Could not upload ${field.label.toLowerCase()}: ${storageUploadError(uploadError, field.label.toLowerCase())}`); return; }
     const { data: publicUrlData } = database.client.storage.from(STORAGE_BUCKET).getPublicUrl(imagePath);
+    const previousPath = field.categoryIndex !== undefined ? categoryPaths[field.categoryIndex] || storefrontSettings[field.pathKey] : storefrontSettings[field.pathKey];
     settings[field.urlKey] = publicUrlData.publicUrl;
     settings[field.pathKey] = imagePath;
+    if (field.categoryIndex !== undefined) {
+      categoryUrls[field.categoryIndex] = publicUrlData.publicUrl;
+      categoryPaths[field.categoryIndex] = imagePath;
+    }
     setImagePreviewElement(document.querySelector(`#${field.previewId}`), publicUrlData.publicUrl, field.label, imageFile.name);
-    if (storefrontSettings[field.pathKey] && storefrontSettings[field.pathKey] !== imagePath) {
-      await database.client.storage.from(STORAGE_BUCKET).remove([storefrontSettings[field.pathKey]]);
+    if (previousPath && previousPath !== imagePath) {
+      await database.client.storage.from(STORAGE_BUCKET).remove([previousPath]);
     }
   }
+  for (const input of categoryFieldInputs()) {
+    const index = Number(input.name.replace('category', '')) - 1;
+    const imageFile = formData.get(`categoryImage${index + 1}`);
+    if (!(imageFile instanceof File) || !imageFile.size) continue;
+    const contentType = validateImageFile(imageFile, `Category ${index + 1} image`);
+    if (!contentType) return;
+    const safeName = imageFile.name.toLowerCase().replace(/[^a-z0-9.]+/g, '-');
+    const imagePath = `storefront/category-${index + 1}/${Date.now()}-${safeName}`;
+    const { error: uploadError } = await database.client.storage.from(STORAGE_BUCKET).upload(imagePath, imageFile, { upsert: false, cacheControl: '3600', contentType });
+    if (uploadError) { showToast(`Could not upload category ${index + 1} image: ${storageUploadError(uploadError, `category ${index + 1} image`)}`); return; }
+    const { data: publicUrlData } = database.client.storage.from(STORAGE_BUCKET).getPublicUrl(imagePath);
+    const previousPath = categoryPaths[index] || '';
+    categoryUrls[index] = publicUrlData.publicUrl;
+    categoryPaths[index] = imagePath;
+    const preview = input.closest('label')?.querySelector('[data-category-image-preview]');
+    setImagePreviewElement(preview, publicUrlData.publicUrl, `Category ${index + 1} image`, imageFile.name);
+    if (previousPath && previousPath !== imagePath) await database.client.storage.from(STORAGE_BUCKET).remove([previousPath]);
+  }
+  settings.categoryImageUrls = categoryUrls.slice(0, categories.length);
+  settings.categoryImagePaths = categoryPaths.slice(0, categories.length);
   const { data: savedSettings, error } = await database.client
     .from('store_settings')
     .upsert({ key: 'homepage', value: settings, updated_at: new Date().toISOString() }, { onConflict: 'key' })
@@ -716,16 +816,17 @@ async function loadContent() {
   if (!database.configured) return;
   const { data, error } = await database.client.from('store_settings').select('value, updated_at').eq('key', 'homepage').maybeSingle();
   if (error) { showToast(`Could not load store content: ${error.message}`); return; }
-  const settings = { ...(data?.value || {}) };
+  const settings = cleanStorefrontCopy(data?.value || {});
   const categories = Array.isArray(settings.categories)
     ? settings.categories
     : CATEGORY_SETTING_KEYS.map((key, index) => settings[key] || LEGACY_CATEGORY_VALUES[index] || '');
-  syncCategoryFields(categories);
   settings.categories = categories;
   settings.whatsapp = GREENHUB_WHATSAPP;
   STOREFRONT_IMAGE_FIELDS.forEach((field) => {
     settings[field.urlKey] = window.GreenhubStorage.resolveUrl(settings[field.urlKey], settings[field.pathKey]);
   });
+  settings.categoryImageUrls = categoryImageUrls(settings).map((url, index) => window.GreenhubStorage.resolveUrl(url, settings.categoryImagePaths?.[index]) || url);
+  syncCategoryFields(categories, settings.categoryImageUrls);
   storefrontSettings = settings;
   Object.entries(settings).forEach(([key, value]) => { if (document.querySelector(`#content-form [name="${key}"]`)) document.querySelector(`#content-form [name="${key}"]`).value = value; });
   STOREFRONT_IMAGE_FIELDS.forEach((field) => setImagePreviewElement(document.querySelector(`#${field.previewId}`), settings[field.urlKey] || '', field.label));
@@ -737,8 +838,9 @@ function ensureExtendedContentFields() {
   if (!form || form.dataset.extended === 'true') return;
   const panel = document.createElement('article');
   panel.className = 'admin-panel content-panel extended-content-panel';
-  panel.innerHTML = `<div class="panel-heading"><div><p class="admin-kicker">HOMEPAGE</p><h2>Homepage controls</h2></div><span class="content-status">Editable storefront copy</span></div><div class="form-grid"><label>Hero eyebrow<input name="heroEyebrow" type="text" value="THE NEW STANDARD IN SPARES" /></label><label>Brand strip label<input name="brandStripLabel" type="text" value="BUILT FOR" /></label><label>Hero title line 1<input name="heroTitleLine1" type="text" value="Parts that fit." /></label><label>Hero title line 2<input name="heroTitleLine2" type="text" value="Every time." /></label><label>Shop button<input name="heroShopCta" type="text" value="Shop all parts" /></label><label>Browse button<input name="heroBrowseCta" type="text" value="Browse by system" /></label></div><div class="form-grid"><label>Category eyebrow<input name="categoryEyebrow" type="text" value="FIND YOUR FIT" /></label><label>Category title<input name="categoryTitle" type="text" value="Start with your car." /></label><label>Product category 1<input name="category1" type="text" value="Brakes" placeholder="e.g. Braking" /></label><label>Product category 2<input name="category2" type="text" value="Engine" placeholder="e.g. Engine & air" /></label><label>Product category 3<input name="category3" type="text" value="Lighting" placeholder="e.g. Lighting" /></label><label>Product category 4<input name="category4" type="text" value="Suspension" placeholder="e.g. Suspension" /></label></div><div class="form-grid"><label>Shop section eyebrow<input name="shopEyebrow" type="text" value="THE ESSENTIALS" /></label><label>Shop section title<input name="shopTitle" type="text" value="Good parts. No drama." /></label><label>Story eyebrow<input name="storyEyebrow" type="text" value="WHY GREENHUB" /></label><label>Story link label<input name="storyLink" type="text" value="More about our standard" /></label><label>Newsletter eyebrow<input name="newsletterEyebrow" type="text" value="KEEP MOVING" /></label><label>Newsletter title line 1<input name="newsletterTitleLine1" type="text" value="Better parts." /></label><label>Newsletter title line 2<input name="newsletterTitleLine2" type="text" value="Better journeys." /></label><label>Footer intro<input name="footerIntro" type="text" value="For the road ahead. For the work under the hood." /></label></div><div class="storefront-image-grid"><label>Hero image<input name="heroImage" type="file" accept="image/*" data-storefront-image="heroImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="hero-image-preview"><span>No image uploaded</span></div></label><label>Our standard image<input name="storyImage" type="file" accept="image/*" data-storefront-image="storyImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="story-image-preview"><span>No image uploaded</span></div></label><label>Category 1 image<input name="categoryBrakesImage" type="file" accept="image/*" data-storefront-image="categoryBrakesImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="category-brakes-image-preview"><span>No image uploaded</span></div></label><label>Category 2 image<input name="categoryEngineImage" type="file" accept="image/*" data-storefront-image="categoryEngineImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="category-engine-image-preview"><span>No image uploaded</span></div></label><label>Category 3 image<input name="categoryLightingImage" type="file" accept="image/*" data-storefront-image="categoryLightingImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="category-lighting-image-preview"><span>No image uploaded</span></div></label><label>Category 4 image<input name="categorySuspensionImage" type="file" accept="image/*" data-storefront-image="categorySuspensionImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="category-suspension-image-preview"><span>No image uploaded</span></div></label></div>`;
+  panel.innerHTML = `<div class="panel-heading"><div><p class="admin-kicker">HOMEPAGE</p><h2>Homepage controls</h2></div><span class="content-status">Editable storefront copy</span></div><div class="form-grid"><label>Hero eyebrow<input name="heroEyebrow" type="text" value="THE NEW STANDARD IN SPARES" /></label><label>Hero title line 1<input name="heroTitleLine1" type="text" value="Parts that fit." /></label><label>Hero title line 2<input name="heroTitleLine2" type="text" value="Every time." /></label><label>Shop button<input name="heroShopCta" type="text" value="Shop all parts" /></label><label>Browse button<input name="heroBrowseCta" type="text" value="Browse by system" /></label></div><div class="form-grid"><label>Category eyebrow<input name="categoryEyebrow" type="text" value="FIND YOUR FIT" /></label><label>Category title<input name="categoryTitle" type="text" value="Start with your car." /></label><label>Product category 1<input name="category1" type="text" value="Brakes" placeholder="e.g. Braking" /></label><label>Product category 2<input name="category2" type="text" value="Engine" placeholder="e.g. Engine & air" /></label><label>Product category 3<input name="category3" type="text" value="Lighting" placeholder="e.g. Lighting" /></label><label>Product category 4<input name="category4" type="text" value="Suspension" placeholder="e.g. Suspension" /></label></div><div class="form-grid"><label>Shop section eyebrow<input name="shopEyebrow" type="text" value="THE ESSENTIALS" /></label><label>Shop section title<input name="shopTitle" type="text" value="Good parts. No drama." /></label><label>Story eyebrow<input name="storyEyebrow" type="text" value="WHY GREENHUB" /></label><label>Story link label<input name="storyLink" type="text" value="More about our standard" /></label><label>Newsletter eyebrow<input name="newsletterEyebrow" type="text" value="KEEP MOVING" /></label><label>Newsletter title line 1<input name="newsletterTitleLine1" type="text" value="Better parts." /></label><label>Newsletter title line 2<input name="newsletterTitleLine2" type="text" value="Better journeys." /></label><label>Footer intro<input name="footerIntro" type="text" value="For the road ahead. For the work under the hood." /></label></div><div class="storefront-image-grid"><label>Hero image<input name="heroImage" type="file" accept="image/*" data-storefront-image="heroImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="hero-image-preview"><span>No image uploaded</span></div></label><label>Our standard image<input name="storyImage" type="file" accept="image/*" data-storefront-image="storyImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="story-image-preview"><span>No image uploaded</span></div></label><label>Category 1 image<input name="categoryBrakesImage" type="file" accept="image/*" data-storefront-image="categoryBrakesImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="category-brakes-image-preview"><span>No image uploaded</span></div></label><label>Category 2 image<input name="categoryEngineImage" type="file" accept="image/*" data-storefront-image="categoryEngineImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="category-engine-image-preview"><span>No image uploaded</span></div></label><label>Category 3 image<input name="categoryLightingImage" type="file" accept="image/*" data-storefront-image="categoryLightingImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="category-lighting-image-preview"><span>No image uploaded</span></div></label><label>Category 4 image<input name="categorySuspensionImage" type="file" accept="image/*" data-storefront-image="categorySuspensionImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="category-suspension-image-preview"><span>No image uploaded</span></div></label></div>`;
   const actions = form.querySelector('.content-actions')?.closest('article');
+  panel.innerHTML = panel.innerHTML.replace(/\bparts?\b/gi, 'products').replace(/Products that fit\./g, 'Built to fit.');
   form.insertBefore(panel, actions || null);
   form.dataset.extended = 'true';
 }
@@ -752,7 +854,7 @@ async function loadRemoteData() {
       database.client.from('customers').select('name, email, location, segment, created_at').order('created_at', { ascending: false })
     ]);
     if (!productResponse.error && productResponse.data) products = productResponse.data.map(fromDatabaseProduct);
-    if (!orderResponse.error && orderResponse.data) ORDERS = orderResponse.data.map((order) => ({ id: order.id, customer: order.customer_name, customerEmail: order.customer_email || '', date: new Date(order.created_at).toLocaleDateString(), items: Array.isArray(order.items) ? `${order.items.length} part${order.items.length === 1 ? '' : 's'}` : '—', total: Number(order.total), status: order.status, statusClass: order.status === 'paid' ? 'paid' : order.status === 'shipped' || order.status === 'delivered' ? 'shipped' : order.status === 'cancelled' ? 'cancelled' : 'packing' }));
+    if (!orderResponse.error && orderResponse.data) ORDERS = orderResponse.data.map((order) => ({ id: order.id, customer: order.customer_name, customerEmail: order.customer_email || '', date: new Date(order.created_at).toLocaleDateString(), items: Array.isArray(order.items) ? `${order.items.length} product${order.items.length === 1 ? '' : 's'}` : '—', total: Number(order.total), status: order.status, statusClass: order.status === 'paid' ? 'paid' : order.status === 'shipped' || order.status === 'delivered' ? 'shipped' : order.status === 'cancelled' ? 'cancelled' : 'packing' }));
     if (!customerResponse.error && customerResponse.data) CUSTOMERS = customerResponse.data.map((customer) => {
       const customerOrders = ORDERS.filter((order) => order.customerEmail && customer.email && order.customerEmail.toLowerCase() === customer.email.toLowerCase());
       return { name: customer.name, email: customer.email || '—', location: customer.location || '—', orders: customerOrders.length, spent: customerOrders.reduce((sum, order) => sum + order.total, 0), lastOrder: customerOrders[0]?.date || '—', segment: customer.segment };

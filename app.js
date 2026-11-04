@@ -37,9 +37,46 @@ function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
 }
 
+function cleanStorefrontCopy(settings = {}) {
+  const cleaned = { ...settings };
+  Object.keys(cleaned).forEach((key) => {
+    if (typeof cleaned[key] !== 'string' || /(url|path|email|whatsapp)/i.test(key)) return;
+    cleaned[key] = cleaned[key]
+      .replace(/\bparts that fit\b/gi, 'built to fit')
+      .replace(/\b(?:spare|replacement) parts?\b/gi, 'replacement products')
+      .replace(/\bpart number\b/gi, 'reference number')
+      .replace(/\bparts?\b/gi, 'products');
+  });
+  return cleaned;
+}
+
+function imageEmptyStateMarkup(label = 'Image unavailable', hidden = false) {
+  return `<span class="image-empty-state"${hidden ? ' hidden' : ''}>${escapeHtml(label)}</span>`;
+}
+
 function productVisual(product) {
   const imageUrl = product.image_url || product.imageUrl;
-  return imageUrl ? `<img class="product-photo" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(product.name)}" loading="lazy" />` : '';
+  return imageUrl
+    ? `<img class="product-photo" data-empty-fallback src="${escapeHtml(imageUrl)}" alt="${escapeHtml(product.name)}" loading="lazy" />${imageEmptyStateMarkup('Image unavailable', true)}`
+    : imageEmptyStateMarkup();
+}
+
+function bindMissingImageStates(container) {
+  if (!container) return;
+  container.querySelectorAll('img[data-empty-fallback]').forEach((image) => {
+    const fallback = image.nextElementSibling;
+    const showImage = () => {
+      image.hidden = false;
+      if (fallback?.classList.contains('image-empty-state')) fallback.hidden = true;
+    };
+    const showFallback = () => {
+      image.hidden = true;
+      if (fallback?.classList.contains('image-empty-state')) fallback.hidden = false;
+    };
+    image.addEventListener('load', showImage, { once: true });
+    image.addEventListener('error', showFallback, { once: true });
+    if (image.complete && image.naturalWidth > 0) showImage();
+  });
 }
 
 function visibleProducts() {
@@ -72,7 +109,7 @@ function renderProducts() {
   if (!products.length) {
     productGrid.innerHTML = '';
     emptyState.hidden = false;
-    emptyState.innerHTML = '<strong>No products available.</strong><span>Products with images added to Supabase will appear here.</span>';
+    emptyState.innerHTML = '<strong>No products available.</strong><span>Products added to Supabase will appear here.</span>';
     productCount.textContent = 'No products available';
     return;
   }
@@ -88,9 +125,10 @@ function renderProducts() {
       <div class="product-copy"><div class="product-meta"><span>${escapeHtml(product.category)}</span><span>${escapeHtml(product.meta)}</span></div><h3>${escapeHtml(product.name)}</h3><div class="product-price">€${Number(product.price).toFixed(2)} ${product.oldPrice ? `<del>€${Number(product.oldPrice).toFixed(2)}</del>` : ''}</div></div>
     </article>
   `).join('');
+  bindMissingImageStates(productGrid);
   emptyState.hidden = visible.length !== 0;
-  if (!visible.length) emptyState.innerHTML = '<strong>No matching parts.</strong><span>Try another search term or browse all parts.</span><button class="text-link reset-search">Clear search ↗</button>';
-  productCount.textContent = visible.length ? `Showing ${visible.length} of ${products.length} parts` : 'No matching parts';
+  if (!visible.length) emptyState.innerHTML = '<strong>No matching products.</strong><span>Try another search term or browse all products.</span><button class="text-link reset-search">Clear search ↗</button>';
+  productCount.textContent = visible.length ? `Showing ${visible.length} of ${products.length} products` : 'No matching products';
   observeReveals();
 }
 
@@ -106,11 +144,12 @@ function renderCart() {
   document.querySelector('#drawer-total').textContent = formatPrice(total);
   const drawerItems = document.querySelector('#drawer-items');
   if (!state.cart.length) {
-    drawerItems.innerHTML = '<div class="drawer-empty"><div class="empty-bag-icon">＋</div><strong>Your bag is waiting.</strong><span>Add something useful for the road.</span><a class="text-link" href="#shop">Browse parts →</a></div>';
+    drawerItems.innerHTML = '<div class="drawer-empty"><div class="empty-bag-icon">＋</div><strong>Your bag is waiting.</strong><span>Add something useful for the road.</span><a class="text-link" href="#shop">Browse products →</a></div>';
     renderCheckoutSummary();
     return;
   }
   drawerItems.innerHTML = state.cart.map((item) => `<div class="drawer-item"><div class="drawer-item-art">${productVisual(item)}</div><div><small>${escapeHtml(item.category)}</small><h4>${escapeHtml(item.name)}</h4><button class="remove-item" data-remove="${item.id}">− Remove</button></div><p>${formatPrice(item.price * item.quantity)}</p></div>`).join('');
+  bindMissingImageStates(drawerItems);
   renderCheckoutSummary();
 }
 
@@ -155,6 +194,7 @@ function setFilter(filter) {
 }
 
 const CATEGORY_SETTING_KEYS = ['category1', 'category2', 'category3', 'category4'];
+const CATEGORY_IMAGE_SETTING_KEYS = ['categoryBrakesImageUrl', 'categoryEngineImageUrl', 'categoryLightingImageUrl', 'categorySuspensionImageUrl'];
 
 function storeCategories(settings = {}) {
   const configured = Array.isArray(settings.categories)
@@ -165,19 +205,58 @@ function storeCategories(settings = {}) {
   return [...new Set(configuredValues.length ? configuredValues : catalogueCategories)];
 }
 
+function storeCategoryImage(settings = {}, index) {
+  if (Array.isArray(settings.categoryImageUrls)) return settings.categoryImageUrls[index] || '';
+  return settings[CATEGORY_IMAGE_SETTING_KEYS[index]] || '';
+}
+
 function setCustomerImage(target, imageUrl, backgroundImage = '') {
   const element = typeof target === 'string' ? document.querySelector(target) : target;
   if (!element) return;
+  let emptyState = [...element.children].find((child) => child.classList.contains('image-empty-state'));
+  if (!emptyState) {
+    emptyState = document.createElement('span');
+    emptyState.className = 'image-empty-state';
+    emptyState.textContent = 'Image unavailable';
+    element.appendChild(emptyState);
+  }
   if (!imageUrl) {
     element.classList.remove('has-uploaded-image');
     element.style.removeProperty('background-image');
+    delete element.dataset.imageSource;
+    emptyState.hidden = false;
     return;
   }
-  const safeUrl = JSON.stringify(String(imageUrl));
-  element.style.backgroundImage = backgroundImage ? `${backgroundImage}, url(${safeUrl})` : `url(${safeUrl})`;
-  element.style.backgroundSize = 'cover';
-  element.style.backgroundPosition = 'center';
-  element.classList.add('has-uploaded-image');
+  const source = String(imageUrl).trim();
+  if (!source) {
+    setCustomerImage(element, '', backgroundImage);
+    return;
+  }
+  element.dataset.imageSource = source;
+  emptyState.hidden = false;
+  const showEmptyState = () => {
+    if (element.dataset.imageSource !== source) return;
+    element.classList.remove('has-uploaded-image');
+    element.style.removeProperty('background-image');
+    emptyState.hidden = false;
+  };
+  const showImage = () => {
+    if (element.dataset.imageSource !== source) return;
+    const safeUrl = JSON.stringify(source);
+    element.style.backgroundImage = backgroundImage ? `${backgroundImage}, url(${safeUrl})` : `url(${safeUrl})`;
+    element.style.backgroundSize = 'cover';
+    element.style.backgroundPosition = 'center';
+    element.classList.add('has-uploaded-image');
+    emptyState.hidden = true;
+  };
+  if (typeof Image === 'undefined') {
+    showImage();
+    return;
+  }
+  const probe = new Image();
+  probe.onload = showImage;
+  probe.onerror = showEmptyState;
+  probe.src = source;
 }
 
 function renderCategoryControls(settings = {}) {
@@ -187,7 +266,6 @@ function renderCategoryControls(settings = {}) {
   if (categorySection) categorySection.hidden = !categories.length;
   if (!categoryGrid) return;
   const cardClasses = ['category-brakes', 'category-engine', 'category-lighting', 'category-suspension'];
-  const imageKeys = ['categoryBrakesImageUrl', 'categoryEngineImageUrl', 'categoryLightingImageUrl', 'categorySuspensionImageUrl'];
   categoryGrid.replaceChildren(...categories.map((category, index) => {
     const card = document.createElement('a');
     card.className = `category-card ${cardClasses[index % cardClasses.length]}`;
@@ -198,6 +276,7 @@ function renderCategoryControls(settings = {}) {
     number.textContent = String(index + 1).padStart(2, '0');
     const art = document.createElement('div');
     art.className = 'category-art';
+    art.innerHTML = imageEmptyStateMarkup();
     const bottom = document.createElement('div');
     bottom.className = 'category-bottom';
     const label = document.createElement('span');
@@ -206,7 +285,7 @@ function renderCategoryControls(settings = {}) {
     explore.textContent = 'Explore ↗';
     bottom.append(label, explore);
     card.append(number, art, bottom);
-    if (imageKeys[index]) setCustomerImage(art, settings[imageKeys[index]] || '');
+    setCustomerImage(art, storeCategoryImage(settings, index));
     return card;
   }));
   const filterTabs = document.querySelector('.filter-tabs');
@@ -304,7 +383,7 @@ function selectPayment(payment) {
 }
 
 function openCheckout() {
-  if (!state.cart.length) { showToast('Add a part before checking out'); return; }
+  if (!state.cart.length) { showToast('Add a product before checking out'); return; }
   closeCart();
   selectPayment(state.payment);
   checkoutModal.classList.add('open');
@@ -475,15 +554,15 @@ function addChatMessage(message, role, options = {}) {
 
 function getBotReply(input) {
   const message = input.toLowerCase();
-  if (message.includes('find') || message.includes('part') || message.includes('fit') || message.includes('car')) return 'I can help with that. Send me your <strong>make, model and year</strong> — for example, “BMW 3 Series, 2019, front brakes”. I’ll point you to the right system.';
+  if (message.includes('find') || message.includes('product') || message.includes('component') || message.includes('fit') || message.includes('car')) return 'I can help with that. Send me your <strong>make, model and year</strong> — for example, “BMW 3 Series, 2019, front brakes”. I’ll point you to the right system.';
   if (message.includes('order') || message.includes('track') || message.includes('delivery') || message.includes('ship')) return 'For an order update, reply with your <strong>order number</strong> (it starts with HW-). Orders usually leave our workshop within 24 hours.';
-  if (message.includes('return') || message.includes('warranty') || message.includes('refund')) return 'You have <strong>30 days</strong> to return unused parts in their original packaging. Every Greenhub part also includes a 2-year fitment guarantee. <a href="#footer">Read the full returns policy →</a>';
+  if (message.includes('return') || message.includes('warranty') || message.includes('refund')) return 'You have <strong>30 days</strong> to return unused products in their original packaging. Every Greenhub product also includes a 2-year fitment guarantee. <a href="#footer">Read the full returns policy →</a>';
   if (message.includes('person') || message.includes('human') || message.includes('agent') || message.includes('talk')) return `Of course. Our support team is online Mon–Fri, 08:00–18:00. <a href="https://wa.me/${GREENHUB_WHATSAPP}" target="_blank" rel="noreferrer">Chat on WhatsApp →</a> or send us a message on Telegram.`;
   const requestedCategory = [...document.querySelectorAll('.filter-tab[data-filter]:not([data-filter="All"])')]
     .map((button) => button.dataset.filter)
     .find((category) => message.includes(category.toLowerCase()));
-  if (requestedCategory) return `Browse our <button class="inline-chat-action" data-chat-filter="${escapeHtml(requestedCategory)}">${escapeHtml(requestedCategory.toLowerCase())} parts →</button>.`;
-  return 'I can help with <strong>finding a part, order tracking, returns, or connecting you to a person</strong>. Try one of the buttons below or tell me what you need.';
+  if (requestedCategory) return `Browse our <button class="inline-chat-action" data-chat-filter="${escapeHtml(requestedCategory)}">${escapeHtml(requestedCategory.toLowerCase())} products →</button>.`;
+  return 'I can help with <strong>finding a product, order tracking, returns, or connecting you to a person</strong>. Try one of the buttons below or tell me what you need.';
 }
 
 function showChatTyping(show) {
@@ -533,7 +612,7 @@ function renderSupportMessages() {
     addChatMessage(
       supportState.available
         ? 'You are connected to Greenhub support. Send your question and an admin will reply here.'
-        : 'Hi, I’m here to help you find the right part. What can I do for you?',
+        : 'Hi, I’m here to help you find the right product. What can I do for you?',
       'bot'
     );
   } else {
@@ -685,14 +764,17 @@ chatLauncher.addEventListener('click', () => toggleChat(!chatWidget.classList.co
 document.querySelector('.chat-close').addEventListener('click', () => toggleChat(false));
 chatForm.addEventListener('submit', (event) => { event.preventDefault(); answerChat(chatInput.value); });
 chatQuick.addEventListener('click', (event) => { const button = event.target.closest('[data-chat-question]'); if (button) answerChat(button.dataset.chatQuestion); });
-chatMessages.addEventListener('click', (event) => { const button = event.target.closest('[data-chat-filter]'); if (!button) return; setFilter(button.dataset.chatFilter); document.querySelector('#shop').scrollIntoView({ behavior: 'smooth' }); addChatMessage(`Here are our ${button.dataset.chatFilter.toLowerCase()} parts.`, 'bot'); });
+chatMessages.addEventListener('click', (event) => { const button = event.target.closest('[data-chat-filter]'); if (!button) return; setFilter(button.dataset.chatFilter); document.querySelector('#shop').scrollIntoView({ behavior: 'smooth' }); addChatMessage(`Here are our ${button.dataset.chatFilter.toLowerCase()} products.`, 'bot'); });
 
 function applySettings(remoteSettings = null) {
-  const settings = { ...(remoteSettings || loadSettings()) };
+  const settings = cleanStorefrontCopy(remoteSettings || loadSettings());
   Object.keys(settings).filter((key) => key.endsWith('Path')).forEach((pathKey) => {
     const urlKey = pathKey.replace(/Path$/, 'Url');
     settings[urlKey] = window.GreenhubStorage?.resolveUrl(settings[urlKey], settings[pathKey]) || settings[urlKey];
   });
+  if (Array.isArray(settings.categoryImageUrls)) {
+    settings.categoryImageUrls = settings.categoryImageUrls.map((url, index) => window.GreenhubStorage?.resolveUrl(url, settings.categoryImagePaths?.[index]) || url);
+  }
   document.querySelectorAll('[data-setting]').forEach((element) => {
     const value = settings[element.dataset.setting];
     if (value !== undefined && value !== null) element.textContent = value;
@@ -733,7 +815,7 @@ async function loadPublicStoreData() {
       ...product,
       image_url: window.GreenhubStorage?.resolveUrl(product.image_url, product.image_path) || product.image_url,
       oldPrice: product.old_price
-    })).filter((product) => product.name?.trim() && product.image_url?.trim());
+    })).filter((product) => product.name?.trim());
   }
   if (settingsResponse.error) console.error('[Greenhub] Could not load store content:', settingsResponse.error.message);
   else if (settingsResponse.data?.value) applySettings(settingsResponse.data.value);
