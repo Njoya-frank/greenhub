@@ -4,6 +4,8 @@
 
 create extension if not exists pgcrypto;
 
+alter table if exists public.orders add column if not exists payment_method text not null default 'bitcoin';
+
 do $$
 begin
   create type public.app_role as enum ('admin', 'customer');

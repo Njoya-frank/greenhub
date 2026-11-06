@@ -109,10 +109,13 @@ create table if not exists public.orders (
   customer_name text not null,
   customer_email text,
   items jsonb not null default '[]'::jsonb,
+  payment_method text not null default 'bitcoin',
   total numeric(10, 2) not null default 0,
   status text not null default 'pending',
   created_at timestamptz not null default now()
 );
+
+alter table public.orders add column if not exists payment_method text not null default 'bitcoin';
 
 create table if not exists public.customers (
   id uuid primary key default gen_random_uuid(),

@@ -45,7 +45,21 @@ function cleanStorefrontCopy(settings = {}) {
       .replace(/\bparts that fit\b/gi, 'built to fit')
       .replace(/\b(?:spare|replacement) parts?\b/gi, 'replacement products')
       .replace(/\bpart number\b/gi, 'reference number')
-      .replace(/\bparts?\b/gi, 'products');
+      .replace(/\bparts?\b/gi, 'products')
+      .replace(/\bspares\b/gi, 'products')
+      .replace(/\bautomotive\b/gi, 'product')
+      .replace(/\bvehicles?\b/gi, 'products')
+      .replace(/\bcars?\b/gi, 'products')
+      .replace(/\bdrivers?\b/gi, 'customers')
+      .replace(/\bfitment\b/gi, 'product details')
+      .replace(/\bmake, model and year\b/gi, 'product details')
+      .replace(/\bmake or model\b/gi, 'product details')
+      .replace(/\bworkshop\b/gi, 'quality')
+      .replace(/\bgarage\b/gi, 'studio')
+      .replace(/\bunder the hood\b/gi, 'behind the scenes')
+      .replace(/\broad ahead\b/gi, 'days ahead')
+      .replace(/\broad\b/gi, 'way')
+      .replace(/\bjourneys?\b/gi, 'experiences');
   });
   return cleaned;
 }
@@ -144,7 +158,7 @@ function renderCart() {
   document.querySelector('#drawer-total').textContent = formatPrice(total);
   const drawerItems = document.querySelector('#drawer-items');
   if (!state.cart.length) {
-    drawerItems.innerHTML = '<div class="drawer-empty"><div class="empty-bag-icon">＋</div><strong>Your bag is waiting.</strong><span>Add something useful for the road.</span><a class="text-link" href="#shop">Browse products →</a></div>';
+    drawerItems.innerHTML = '<div class="drawer-empty"><div class="empty-bag-icon">＋</div><strong>Your bag is waiting.</strong><span>Add something useful for today.</span><a class="text-link" href="#shop">Browse products →</a></div>';
     renderCheckoutSummary();
     return;
   }
@@ -368,12 +382,18 @@ const checkoutForm = document.querySelector('#checkout-form');
 const giftcardFields = document.querySelector('#giftcard-fields');
 const paymentNotice = document.querySelector('#payment-method-notice');
 const paymentSecurity = document.querySelector('#checkout-security');
-const paymentMessages = { giftcard: 'Enter a valid Greenhub gift card code to apply your balance.', bitcoin: 'Bitcoin payment is selected. Follow the payment instructions to complete your order.', revolut: 'Revolut Bank transfer is selected. Follow the payment instructions to complete your order.' };
-const paymentLabels = { giftcard: 'Redeem gift card', bitcoin: 'Continue with Bitcoin', revolut: 'Continue with Revolut' };
-const paymentSecurityMessages = { bitcoin: '₿ Bitcoin payment instructions will be provided after you confirm your order.', giftcard: '✦ Your gift card balance is applied before the order is submitted.', revolut: '↗ Revolut Bank transfer instructions will be provided after you confirm your order.' };
+const paymentMessages = { giftcard: 'Gift card payment is selected. Follow the payment instructions to complete your order.', bitcoin: 'Bitcoin payment is selected. Follow the payment instructions to complete your order.', revolut: 'Revolut Bank transfer is selected. Follow the payment instructions to complete your order.' };
+const paymentLabels = { giftcard: 'Continue with Gift card', bitcoin: 'Continue with Bitcoin', revolut: 'Continue with Revolut' };
+const paymentSecurityMessages = { bitcoin: '₿ Bitcoin payment instructions will be provided after you confirm your order.', giftcard: '✦ Gift card payment instructions will be provided after you confirm your order.', revolut: '↗ Revolut Bank transfer instructions will be provided after you confirm your order.' };
 
 function selectPayment(payment) {
   state.payment = payment;
+  if (payment !== 'giftcard') {
+    state.giftCardDiscount = 0;
+    state.giftCardCode = '';
+    document.querySelector('#gift-card-input').value = '';
+    document.querySelector('#gift-card-message').textContent = 'Enter a code if you have one, or continue with gift card payment.';
+  }
   document.querySelectorAll('.payment-method').forEach((button) => button.classList.toggle('active', button.dataset.payment === payment));
   paymentNotice.textContent = paymentMessages[payment];
   giftcardFields.hidden = payment !== 'giftcard';
@@ -406,7 +426,11 @@ function applyGiftCard() {
   const code = input.value.trim().toUpperCase();
   const subtotal = state.cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   setTimeout(() => {
-    if (code === 'GREENHUB10') {
+    if (!code) {
+      state.giftCardDiscount = 0;
+      state.giftCardCode = '';
+      message.textContent = 'No gift card code applied. You can continue with gift card payment.';
+    } else if (code === 'GREENHUB10') {
       state.giftCardDiscount = subtotal * .1;
       state.giftCardCode = code;
       message.innerHTML = '<strong>Gift card applied.</strong> You saved 10% on this order.';
@@ -431,7 +455,6 @@ document.querySelector('#apply-gift-card').addEventListener('click', applyGiftCa
 document.querySelector('#gift-card-input').addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); applyGiftCard(); } });
 checkoutForm.addEventListener('submit', (event) => {
   event.preventDefault();
-  if (state.payment === 'giftcard' && !state.giftCardDiscount) { showToast('Apply a valid gift card before continuing'); return; }
   if (!checkoutForm.checkValidity()) { checkoutForm.reportValidity(); return; }
   const paymentName = document.querySelector(`.payment-method[data-payment="${state.payment}"] strong`).textContent;
   const submitButton = document.querySelector('.checkout-submit');
@@ -444,12 +467,18 @@ checkoutForm.addEventListener('submit', (event) => {
     id: `GH-${Date.now()}`,
     customer_name: String(formData.get('customer_name') || '').trim(),
     customer_email: String(formData.get('customer_email') || '').trim().toLowerCase(),
+    payment_method: state.payment,
     items: state.cart.map((item) => ({ id: item.id, name: item.name, quantity: item.quantity, price: item.price })),
     total: Number((subtotal - discount).toFixed(2)),
     status: 'pending'
   };
   const saveOrder = database.configured ? (async () => {
-    const orderResponse = await database.client.from('orders').insert(order);
+    let orderResponse = await database.client.from('orders').insert(order);
+    if (orderResponse.error && /payment_method|column .* does not exist/i.test(orderResponse.error.message || '')) {
+      const legacyOrder = { ...order };
+      delete legacyOrder.payment_method;
+      orderResponse = await database.client.from('orders').insert(legacyOrder);
+    }
     if (orderResponse.error) throw new Error(orderResponse.error.message);
     const customerResponse = await database.client.from('customers').insert({ name: order.customer_name, email: order.customer_email });
     if (customerResponse.error && customerResponse.error.code !== '23505') throw new Error(customerResponse.error.message);
@@ -461,6 +490,8 @@ checkoutForm.addEventListener('submit', (event) => {
     state.cart = [];
     state.giftCardDiscount = 0;
     state.giftCardCode = '';
+    document.querySelector('#gift-card-input').value = '';
+    document.querySelector('#gift-card-message').textContent = 'Enter a code if you have one, or continue with gift card payment.';
     renderCart();
     closeCheckout();
   }).catch((error) => {
@@ -554,9 +585,9 @@ function addChatMessage(message, role, options = {}) {
 
 function getBotReply(input) {
   const message = input.toLowerCase();
-  if (message.includes('find') || message.includes('product') || message.includes('component') || message.includes('fit') || message.includes('car')) return 'I can help with that. Send me your <strong>make, model and year</strong> — for example, “BMW 3 Series, 2019, front brakes”. I’ll point you to the right system.';
-  if (message.includes('order') || message.includes('track') || message.includes('delivery') || message.includes('ship')) return 'For an order update, reply with your <strong>order number</strong> (it starts with HW-). Orders usually leave our workshop within 24 hours.';
-  if (message.includes('return') || message.includes('warranty') || message.includes('refund')) return 'You have <strong>30 days</strong> to return unused products in their original packaging. Every Greenhub product also includes a 2-year fitment guarantee. <a href="#footer">Read the full returns policy →</a>';
+  if (message.includes('find') || message.includes('product') || message.includes('component') || message.includes('details')) return 'I can help with that. Tell me the <strong>product name, category or reference number</strong> and I’ll point you to the right option.';
+  if (message.includes('order') || message.includes('track') || message.includes('delivery') || message.includes('ship')) return 'For an order update, reply with your <strong>order number</strong> (it starts with GH-). Orders usually leave our warehouse within 24 hours.';
+  if (message.includes('return') || message.includes('warranty') || message.includes('refund')) return 'You have <strong>30 days</strong> to return unused products in their original packaging. Every Greenhub product is checked for quality before dispatch. <a href="#footer">Read the full returns policy →</a>';
   if (message.includes('person') || message.includes('human') || message.includes('agent') || message.includes('talk')) return `Of course. Our support team is online Mon–Fri, 08:00–18:00. <a href="https://wa.me/${GREENHUB_WHATSAPP}" target="_blank" rel="noreferrer">Chat on WhatsApp →</a> or send us a message on Telegram.`;
   const requestedCategory = [...document.querySelectorAll('.filter-tab[data-filter]:not([data-filter="All"])')]
     .map((button) => button.dataset.filter)
@@ -786,6 +817,9 @@ function applySettings(remoteSettings = null) {
   const heroIntro = document.querySelector('.hero-intro');
   if (settings.announcement && announcementCopy) announcementCopy.textContent = settings.announcement;
   if (settings.heroIntro && heroIntro) heroIntro.textContent = settings.heroIntro;
+  document.querySelectorAll('.footer-links a').forEach((link) => {
+    if (link.textContent.trim() === 'Fitment help') link.textContent = 'Product help';
+  });
   document.querySelectorAll('a[href*="wa.me"]').forEach((link) => { link.href = `https://wa.me/${GREENHUB_WHATSAPP}`; });
   document.querySelectorAll('a[href*="t.me"]').forEach((link) => { link.href = GREENHUB_TELEGRAM; });
   if (settings.supportEmail) {

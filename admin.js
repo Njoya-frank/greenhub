@@ -36,10 +36,10 @@ const LEGACY_CATEGORY_VALUES = ['Brakes', 'Engine', 'Lighting', 'Suspension'];
 const STOREFRONT_IMAGE_FIELDS = [
   { field: 'heroImage', urlKey: 'heroImageUrl', pathKey: 'heroImagePath', previewId: 'hero-image-preview', label: 'Hero image' },
   { field: 'storyImage', urlKey: 'storyImageUrl', pathKey: 'storyImagePath', previewId: 'story-image-preview', label: 'Our standard image' },
-  { field: 'categoryBrakesImage', urlKey: 'categoryBrakesImageUrl', pathKey: 'categoryBrakesImagePath', previewId: 'category-brakes-image-preview', label: 'Brakes category image', categoryIndex: 0 },
-  { field: 'categoryEngineImage', urlKey: 'categoryEngineImageUrl', pathKey: 'categoryEngineImagePath', previewId: 'category-engine-image-preview', label: 'Engine category image', categoryIndex: 1 },
-  { field: 'categoryLightingImage', urlKey: 'categoryLightingImageUrl', pathKey: 'categoryLightingImagePath', previewId: 'category-lighting-image-preview', label: 'Lighting category image', categoryIndex: 2 },
-  { field: 'categorySuspensionImage', urlKey: 'categorySuspensionImageUrl', pathKey: 'category-suspension-image-preview', label: 'Suspension category image', categoryIndex: 3 }
+  { field: 'categoryBrakesImage', urlKey: 'categoryBrakesImageUrl', pathKey: 'categoryBrakesImagePath', previewId: 'category-brakes-image-preview', label: 'Category 1 image', categoryIndex: 0 },
+  { field: 'categoryEngineImage', urlKey: 'categoryEngineImageUrl', pathKey: 'categoryEngineImagePath', previewId: 'category-engine-image-preview', label: 'Category 2 image', categoryIndex: 1 },
+  { field: 'categoryLightingImage', urlKey: 'categoryLightingImageUrl', pathKey: 'categoryLightingImagePath', previewId: 'category-lighting-image-preview', label: 'Category 3 image', categoryIndex: 2 },
+  { field: 'categorySuspensionImage', urlKey: 'categorySuspensionImageUrl', pathKey: 'categorySuspensionImagePath', previewId: 'category-suspension-image-preview', label: 'Category 4 image', categoryIndex: 3 }
 ];
 
 function saveProducts() {
@@ -99,7 +99,20 @@ function cleanStorefrontCopy(settings = {}) {
       .replace(/\bparts that fit\b/gi, 'built to fit')
       .replace(/\b(?:spare|replacement) parts?\b/gi, 'replacement products')
       .replace(/\bpart number\b/gi, 'reference number')
-      .replace(/\bparts?\b/gi, 'products');
+      .replace(/\bparts?\b/gi, 'products')
+      .replace(/\bautomotive\b/gi, 'product')
+      .replace(/\bvehicles?\b/gi, 'products')
+      .replace(/\bcars?\b/gi, 'products')
+      .replace(/\bdrivers?\b/gi, 'customers')
+      .replace(/\bfitment\b/gi, 'product details')
+      .replace(/\bmake, model and year\b/gi, 'product details')
+      .replace(/\bmake or model\b/gi, 'product details')
+      .replace(/\bworkshop\b/gi, 'quality')
+      .replace(/\bgarage\b/gi, 'studio')
+      .replace(/\bunder the hood\b/gi, 'behind the scenes')
+      .replace(/\broad ahead\b/gi, 'days ahead')
+      .replace(/\broad\b/gi, 'way')
+      .replace(/\bjourneys?\b/gi, 'experiences');
   });
   return cleaned;
 }
@@ -889,7 +902,27 @@ function ensureExtendedContentFields() {
   panel.className = 'admin-panel content-panel extended-content-panel';
   panel.innerHTML = `<div class="panel-heading"><div><p class="admin-kicker">HOMEPAGE</p><h2>Homepage controls</h2></div><span class="content-status">Editable storefront copy</span></div><div class="form-grid"><label>Hero eyebrow<input name="heroEyebrow" type="text" value="THE NEW STANDARD IN SPARES" /></label><label>Hero title line 1<input name="heroTitleLine1" type="text" value="Parts that fit." /></label><label>Hero title line 2<input name="heroTitleLine2" type="text" value="Every time." /></label><label>Shop button<input name="heroShopCta" type="text" value="Shop all parts" /></label><label>Browse button<input name="heroBrowseCta" type="text" value="Browse by system" /></label></div><div class="form-grid"><label>Category eyebrow<input name="categoryEyebrow" type="text" value="FIND YOUR FIT" /></label><label>Category title<input name="categoryTitle" type="text" value="Start with your car." /></label><label>Product category 1<input name="category1" type="text" value="Brakes" placeholder="e.g. Braking" /></label><label>Product category 2<input name="category2" type="text" value="Engine" placeholder="e.g. Engine & air" /></label><label>Product category 3<input name="category3" type="text" value="Lighting" placeholder="e.g. Lighting" /></label><label>Product category 4<input name="category4" type="text" value="Suspension" placeholder="e.g. Suspension" /></label></div><div class="form-grid"><label>Shop section eyebrow<input name="shopEyebrow" type="text" value="THE ESSENTIALS" /></label><label>Shop section title<input name="shopTitle" type="text" value="Good parts. No drama." /></label><label>Story eyebrow<input name="storyEyebrow" type="text" value="WHY GREENHUB" /></label><label>Story link label<input name="storyLink" type="text" value="More about our standard" /></label><label>Newsletter eyebrow<input name="newsletterEyebrow" type="text" value="KEEP MOVING" /></label><label>Newsletter title line 1<input name="newsletterTitleLine1" type="text" value="Better parts." /></label><label>Newsletter title line 2<input name="newsletterTitleLine2" type="text" value="Better journeys." /></label><label>Footer intro<input name="footerIntro" type="text" value="For the road ahead. For the work under the hood." /></label></div><div class="storefront-image-grid"><label>Hero image<input name="heroImage" type="file" accept="image/*" data-storefront-image="heroImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="hero-image-preview"><span>No image uploaded</span></div></label><label>Our standard image<input name="storyImage" type="file" accept="image/*" data-storefront-image="storyImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="story-image-preview"><span>No image uploaded</span></div></label><label>Category 1 image<input name="categoryBrakesImage" type="file" accept="image/*" data-storefront-image="categoryBrakesImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="category-brakes-image-preview"><span>No image uploaded</span></div></label><label>Category 2 image<input name="categoryEngineImage" type="file" accept="image/*" data-storefront-image="categoryEngineImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="category-engine-image-preview"><span>No image uploaded</span></div></label><label>Category 3 image<input name="categoryLightingImage" type="file" accept="image/*" data-storefront-image="categoryLightingImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="category-lighting-image-preview"><span>No image uploaded</span></div></label><label>Category 4 image<input name="categorySuspensionImage" type="file" accept="image/*" data-storefront-image="categorySuspensionImage" /><small class="field-help">JPG, PNG or WebP · max 5 MB</small><div class="storefront-image-preview" id="category-suspension-image-preview"><span>No image uploaded</span></div></label></div>`;
   const actions = form.querySelector('.content-actions')?.closest('article');
-  panel.innerHTML = panel.innerHTML.replace(/\bparts?\b/gi, 'products').replace(/Products that fit\./g, 'Built to fit.');
+  panel.innerHTML = panel.innerHTML
+    .replace(/\bparts?\b/gi, 'products')
+    .replace(/\bspares\b/gi, 'products')
+    .replace(/\b(?:spare|replacement) products?\b/gi, 'products')
+    .replace(/\bcars?\b/gi, 'products')
+    .replace(/\bfitment\b/gi, 'product details')
+    .replace(/\bmake, model and year\b/gi, 'product details')
+    .replace(/\bworkshop\b/gi, 'quality')
+    .replace(/\bgarage\b/gi, 'studio')
+    .replace(/\bunder the hood\b/gi, 'behind the scenes')
+    .replace(/\broad ahead\b/gi, 'days ahead')
+    .replace(/\broad\b/gi, 'way')
+    .replace(/\bjourneys?\b/gi, 'experiences')
+    .replace(/Browse by system/g, 'Browse categories')
+    .replace(/FIND YOUR FIT/g, 'FIND YOUR PRODUCT')
+    .replace(/KEEP MOVING/g, 'KEEP EXPLORING')
+    .replace(/Products that fit\./g, 'Built to fit.')
+    .replace(/\bBrakes\b/g, 'Accessories')
+    .replace(/\bEngine\b/g, 'Tech')
+    .replace(/\bLighting\b/g, 'Home')
+    .replace(/\bSuspension\b/g, 'Essentials');
   form.insertBefore(panel, actions || null);
   form.dataset.extended = 'true';
 }

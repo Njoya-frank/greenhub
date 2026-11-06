@@ -1,6 +1,6 @@
-# Greenhub Parts
+# Greenhub
 
-A self-contained responsive spare-parts storefront inspired by the visual direction of the supplied reference site. It uses plain HTML, CSS, and JavaScript so it can be previewed without a build step.
+A self-contained responsive product storefront inspired by the visual direction of the supplied reference site. It uses plain HTML, CSS, and JavaScript so it can be previewed without a build step.
 
 ## Preview
 
