@@ -102,6 +102,29 @@ function serveStaticFile(request, response) {
 const server = http.createServer((request, response) => {
   const requestPath = new URL(request.url, `http://${request.headers.host || 'localhost'}`).pathname;
 
+  if (requestPath === '/api/order-email') {
+    if (request.method !== 'POST') {
+      response.writeHead(405, { Allow: 'POST', 'Content-Type': 'text/plain; charset=utf-8' });
+      response.end('Method not allowed');
+      return;
+    }
+    try {
+      const orderEmailHandler = require(path.join(ROOT_DIR, 'api', 'order-email.js'));
+      orderEmailHandler(request, response).catch((error) => {
+        console.error('[Greenhub] Order email failed:', error);
+        if (!response.headersSent) {
+          response.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+          response.end(JSON.stringify({ error: 'Order email could not be sent.' }));
+        }
+      });
+    } catch (error) {
+      console.error('[Greenhub] Order email route failed:', error);
+      response.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ error: 'Order email could not be sent.' }));
+    }
+    return;
+  }
+
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     response.writeHead(405, { Allow: 'GET, HEAD' });
     response.end();

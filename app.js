@@ -1,10 +1,6 @@
 const SETTINGS_STORAGE_KEY = 'greenhub_settings';
 const LEGACY_SETTINGS_STORAGE_KEY = 'hafenwerk_settings';
 const STOREFRONT_SETTINGS_SYNC_KEY = 'greenhub_store_settings_updated';
-const SUPPORT_VISITOR_TOKEN_KEY = 'greenhub_support_visitor_token';
-const SUPPORT_CONVERSATION_KEY = 'greenhub_support_conversation';
-const GREENHUB_WHATSAPP = '491638604683';
-const GREENHUB_TELEGRAM = 'https://t.me/friedrich3458';
 const database = window.GreenhubDB || { configured: false, client: null };
 
 function loadSettings() {
@@ -21,7 +17,6 @@ let catalogueLoaded = false;
 let catalogueError = '';
 
 const state = { filter: 'All', query: '', sort: 'featured', cart: [], wishes: new Set(), payment: 'bitcoin', giftCardDiscount: 0, giftCardCode: '' };
-const supportState = { configured: false, initialized: false, available: false, visitorToken: '', conversationId: '', messages: [], lastRenderKey: '', pollTimer: null, initPromise: null };
 const productGrid = document.querySelector('#product-grid');
 const emptyState = document.querySelector('#empty-state');
 const productCount = document.querySelector('#product-count');
@@ -150,6 +145,17 @@ function formatPrice(value) {
   return `€${value.toFixed(2)}`;
 }
 
+function quantityControl(item) {
+  return `<div class="quantity-control" data-quantity-control="${item.id}"><button type="button" data-quantity-decrease="${item.id}" aria-label="Decrease ${escapeHtml(item.name)} quantity">−</button><input type="number" data-cart-quantity="${item.id}" value="${item.quantity}" min="1" max="99" inputmode="numeric" aria-label="Quantity for ${escapeHtml(item.name)}" /><button type="button" data-quantity-increase="${item.id}" aria-label="Increase ${escapeHtml(item.name)} quantity">+</button></div>`;
+}
+
+function setCartQuantity(productId, value) {
+  const item = state.cart.find((cartItem) => cartItem.id === Number(productId));
+  if (!item) return;
+  item.quantity = Math.min(99, Math.max(1, Number.parseInt(value, 10) || 1));
+  renderCart();
+}
+
 function renderCart() {
   const count = state.cart.reduce((sum, item) => sum + item.quantity, 0);
   const total = state.cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -162,7 +168,7 @@ function renderCart() {
     renderCheckoutSummary();
     return;
   }
-  drawerItems.innerHTML = state.cart.map((item) => `<div class="drawer-item"><div class="drawer-item-art">${productVisual(item)}</div><div><small>${escapeHtml(item.category)}</small><h4>${escapeHtml(item.name)}</h4><button class="remove-item" data-remove="${item.id}">− Remove</button></div><p>${formatPrice(item.price * item.quantity)}</p></div>`).join('');
+  drawerItems.innerHTML = state.cart.map((item) => `<div class="drawer-item"><div class="drawer-item-art">${productVisual(item)}</div><div class="drawer-item-copy"><small>${escapeHtml(item.category)}</small><h4>${escapeHtml(item.name)}</h4>${quantityControl(item)}<button class="remove-item" data-remove="${item.id}">− Remove</button></div><p>${formatPrice(item.price * item.quantity)}</p></div>`).join('');
   bindMissingImageStates(drawerItems);
   renderCheckoutSummary();
 }
@@ -172,7 +178,7 @@ function renderCheckoutSummary() {
   if (!summaryItems) return;
   const subtotal = state.cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const discount = Math.min(state.giftCardDiscount, subtotal);
-  summaryItems.innerHTML = state.cart.length ? state.cart.map((item) => `<div class="checkout-item"><span>${escapeHtml(item.name)} ×${item.quantity}</span><span>${formatPrice(item.price * item.quantity)}</span></div>`).join('') : '<div class="checkout-item"><span>Your bag is empty</span><span>€0.00</span></div>';
+  summaryItems.innerHTML = state.cart.length ? state.cart.map((item) => `<div class="checkout-item"><span class="checkout-item-copy"><strong>${escapeHtml(item.name)}</strong>${quantityControl(item)}</span><span>${formatPrice(item.price * item.quantity)}</span></div>`).join('') : '<div class="checkout-item"><span>Your bag is empty</span><span>€0.00</span></div>';
   document.querySelector('#checkout-subtotal').textContent = formatPrice(subtotal);
   document.querySelector('#checkout-discount').textContent = `−${formatPrice(discount)}`;
   document.querySelector('#checkout-discount-row').hidden = discount <= 0;
@@ -185,6 +191,18 @@ function showToast(message) {
   toast.classList.add('show');
   clearTimeout(showToast.timeout);
   showToast.timeout = setTimeout(() => toast.classList.remove('show'), 2400);
+}
+
+async function sendOrderNotification(order) {
+  const response = await fetch('/api/order-email', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(order)
+  });
+  let result = {};
+  try { result = await response.json(); } catch { /* keep the fallback error */ }
+  if (!response.ok) throw new Error(result.error || 'Order email could not be sent.');
+  return result;
 }
 
 function openCart() {
@@ -367,12 +385,30 @@ productGrid.addEventListener('click', (event) => {
   }
 });
 
+function handleCartQuantityClick(event) {
+  const increaseButton = event.target.closest('[data-quantity-increase]');
+  const decreaseButton = event.target.closest('[data-quantity-decrease]');
+  const button = increaseButton || decreaseButton;
+  if (!button) return;
+  const item = state.cart.find((cartItem) => cartItem.id === Number(button.dataset.quantityIncrease || button.dataset.quantityDecrease));
+  if (item) setCartQuantity(item.id, item.quantity + (increaseButton ? 1 : -1));
+}
+
+function handleCartQuantityChange(event) {
+  const input = event.target.closest('[data-cart-quantity]');
+  if (input) setCartQuantity(input.dataset.cartQuantity, input.value);
+}
+
 document.querySelector('#drawer-items').addEventListener('click', (event) => {
+  handleCartQuantityClick(event);
   const removeButton = event.target.closest('[data-remove]');
   if (!removeButton) return;
   state.cart = state.cart.filter((item) => item.id !== Number(removeButton.dataset.remove));
   renderCart();
 });
+document.querySelector('#drawer-items').addEventListener('change', handleCartQuantityChange);
+document.querySelector('#checkout-items').addEventListener('click', handleCartQuantityClick);
+document.querySelector('#checkout-items').addEventListener('change', handleCartQuantityChange);
 
 document.querySelectorAll('.cart-trigger').forEach((button) => button.addEventListener('click', openCart));
 document.querySelector('.drawer-close').addEventListener('click', closeCart);
@@ -483,10 +519,21 @@ checkoutForm.addEventListener('submit', (event) => {
     const customerResponse = await database.client.from('customers').insert({ name: order.customer_name, email: order.customer_email });
     if (customerResponse.error && customerResponse.error.code !== '23505') throw new Error(customerResponse.error.message);
   })() : new Promise((resolve) => setTimeout(resolve, 850));
-  saveOrder.then(() => {
+  saveOrder.then(async () => {
+    let emailWarning = '';
+    if (database.configured) {
+      try {
+        await sendOrderNotification(order);
+      } catch (error) {
+        emailWarning = String(error?.message || 'Order email could not be sent.');
+        console.error('Order notification failed:', error);
+      }
+    }
     submitButton.classList.remove('is-loading');
     document.querySelector('#pay-button-label').textContent = paymentLabels[state.payment];
-    showToast(database.configured ? `Order ${order.id} received with ${paymentName}` : `Demo checkout ready with ${paymentName}`);
+    const confirmation = database.configured ? `Order ${order.id} received with ${paymentName}` : `Demo checkout ready with ${paymentName}`;
+    const emailStatus = !database.configured ? '' : emailWarning ? ' Email notification failed.' : ' Email sent.';
+    showToast(`${confirmation}.${emailStatus}`);
     state.cart = [];
     state.giftCardDiscount = 0;
     state.giftCardCode = '';
@@ -552,250 +599,10 @@ document.querySelector('#newsletter-form').addEventListener('submit', async (eve
 });
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape') { toggleSearch(false); closeCart(); closeCheckout(); } });
 
-const chatLauncher = document.querySelector('.chat-launcher');
-const chatWidget = document.querySelector('.chat-widget');
-const chatMessages = document.querySelector('#chat-messages');
-const chatForm = document.querySelector('#chat-form');
-const chatInput = document.querySelector('#chat-input');
-const chatQuick = document.querySelector('#chat-quick');
-
-function toggleChat(open) {
-  chatWidget.classList.toggle('open', open);
-  chatLauncher.setAttribute('aria-expanded', String(open));
-  chatWidget.setAttribute('aria-hidden', String(!open));
-  if (open) {
-    initializeSupportChat();
-    setTimeout(() => chatInput.focus(), 180);
-  }
-}
-
-function addChatMessage(message, role, options = {}) {
-  const item = document.createElement('div');
-  item.className = `chat-message ${role}`;
-  const time = document.createElement('span');
-  time.className = 'message-time';
-  time.textContent = options.label || (role === 'bot' ? 'GREENHUB' : role === 'admin' ? 'GREENHUB TEAM' : 'YOU');
-  const copy = document.createElement('p');
-  if (options.html) copy.innerHTML = message;
-  else copy.textContent = message;
-  item.append(time, copy);
-  chatMessages.appendChild(item);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-function getBotReply(input) {
-  const message = input.toLowerCase();
-  if (message.includes('find') || message.includes('product') || message.includes('component') || message.includes('details')) return 'I can help with that. Tell me the <strong>product name, category or reference number</strong> and I’ll point you to the right option.';
-  if (message.includes('order') || message.includes('track') || message.includes('delivery') || message.includes('ship')) return 'For an order update, reply with your <strong>order number</strong> (it starts with GH-). Orders usually leave our warehouse within 24 hours.';
-  if (message.includes('return') || message.includes('warranty') || message.includes('refund')) return 'You have <strong>30 days</strong> to return unused products in their original packaging. Every Greenhub product is checked for quality before dispatch. <a href="#footer">Read the full returns policy →</a>';
-  if (message.includes('person') || message.includes('human') || message.includes('agent') || message.includes('talk')) return `Of course. Our support team is online Mon–Fri, 08:00–18:00. <a href="https://wa.me/${GREENHUB_WHATSAPP}" target="_blank" rel="noreferrer">Chat on WhatsApp →</a> or send us a message on Telegram.`;
-  const requestedCategory = [...document.querySelectorAll('.filter-tab[data-filter]:not([data-filter="All"])')]
-    .map((button) => button.dataset.filter)
-    .find((category) => message.includes(category.toLowerCase()));
-  if (requestedCategory) return `Browse our <button class="inline-chat-action" data-chat-filter="${escapeHtml(requestedCategory)}">${escapeHtml(requestedCategory.toLowerCase())} products →</button>.`;
-  return 'I can help with <strong>finding a product, order tracking, returns, or connecting you to a person</strong>. Try one of the buttons below or tell me what you need.';
-}
-
-function showChatTyping(show) {
-  const existing = chatMessages.querySelector('.chat-typing-message');
-  if (!show) { if (existing) existing.remove(); return; }
-  if (existing) return;
-  const typingMessage = document.createElement('div');
-  typingMessage.className = 'chat-message bot chat-typing-message';
-  typingMessage.innerHTML = '<span class="message-time">GREENHUB</span><div class="chat-typing" aria-label="Greenhub is typing"><span></span><span></span><span></span></div>';
-  chatMessages.appendChild(typingMessage);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-function supportStorageGet(key) {
-  try { return localStorage.getItem(key) || ''; } catch (error) { return ''; }
-}
-
-function supportStorageSet(key, value) {
-  try { localStorage.setItem(key, value); } catch (error) { /* The chat can still work for this page. */ }
-}
-
-function getSupportVisitorToken() {
-  const existing = supportStorageGet(SUPPORT_VISITOR_TOKEN_KEY);
-  if (existing) return existing;
-  const token = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
-  supportStorageSet(SUPPORT_VISITOR_TOKEN_KEY, token);
-  return token;
-}
-
-function updateSupportStatus(isAvailable) {
-  supportState.available = Boolean(isAvailable);
-  const status = document.querySelector('#chat-status-copy');
-  if (status) status.textContent = supportState.available ? 'Admin online · replies here' : 'Assistant online · replies instantly';
-  if (chatQuick) chatQuick.style.display = supportState.available ? 'none' : 'flex';
-}
-
-function appendChatQuickActions() {
-  if (chatQuick && !chatQuick.isConnected) chatMessages.appendChild(chatQuick);
-}
-
-function renderSupportMessages() {
-  const fingerprint = `${supportState.available}:${supportState.messages.map((message) => `${message.id}:${message.body}`).join('|')}`;
-  if (fingerprint === supportState.lastRenderKey) return;
-  supportState.lastRenderKey = fingerprint;
-  chatMessages.replaceChildren();
-  if (!supportState.messages.length) {
-    addChatMessage(
-      supportState.available
-        ? 'You are connected to Greenhub support. Send your question and an admin will reply here.'
-        : 'Hi, I’m here to help you find the right product. What can I do for you?',
-      'bot'
-    );
-  } else {
-    supportState.messages.forEach((message) => {
-      const role = message.sender_type === 'customer' ? 'user' : message.sender_type === 'admin' ? 'admin' : 'bot';
-      addChatMessage(message.body, role, { label: message.sender_name || (role === 'admin' ? 'GREENHUB TEAM' : role === 'bot' ? 'GREENHUB' : 'YOU') });
-    });
-  }
-  appendChatQuickActions();
-  if (chatQuick) chatQuick.style.display = supportState.available ? 'none' : 'flex';
-}
-
-async function loadSupportPresence() {
-  const { data, error } = await database.client.from('support_presence').select('is_available').eq('id', 1).maybeSingle();
-  if (error) throw error;
-  updateSupportStatus(data?.is_available === true);
-}
-
-async function ensureSupportConversation() {
-  if (supportState.conversationId) return supportState.conversationId;
-  const { data, error } = await database.client.rpc('create_support_conversation', { p_visitor_token: supportState.visitorToken });
-  if (error) throw error;
-  supportState.conversationId = Array.isArray(data) ? data[0] : data;
-  supportStorageSet(SUPPORT_CONVERSATION_KEY, supportState.conversationId);
-  return supportState.conversationId;
-}
-
-async function loadSupportMessages() {
-  if (!supportState.conversationId) return;
-  const { data, error } = await database.client.rpc('get_support_messages', {
-    p_conversation_id: supportState.conversationId,
-    p_visitor_token: supportState.visitorToken
-  });
-  if (error) throw error;
-  supportState.messages = data || [];
-  renderSupportMessages();
-}
-
-async function initializeSupportChat() {
-  if (supportState.initialized) return;
-  if (supportState.initPromise) return supportState.initPromise;
-  supportState.initPromise = (async () => {
-    supportState.visitorToken = getSupportVisitorToken();
-    supportState.conversationId = supportStorageGet(SUPPORT_CONVERSATION_KEY);
-    if (!database.configured) {
-      supportState.initialized = true;
-      updateSupportStatus(false);
-      return;
-    }
-    supportState.configured = true;
-    try {
-      await loadSupportPresence();
-      await ensureSupportConversation();
-      try {
-        await loadSupportMessages();
-      } catch (conversationError) {
-        supportState.conversationId = '';
-        supportStorageSet(SUPPORT_CONVERSATION_KEY, '');
-        await ensureSupportConversation();
-        await loadSupportMessages();
-      }
-      supportState.initialized = true;
-      supportState.pollTimer = window.setInterval(async () => {
-        try {
-          await loadSupportPresence();
-          await loadSupportMessages();
-        } catch (error) {
-          console.error('[Greenhub] Support chat sync failed:', error.message);
-        }
-      }, 4000);
-    } catch (error) {
-      supportState.initialized = true;
-      updateSupportStatus(false);
-      renderSupportMessages();
-      console.error('[Greenhub] Support chat is using bot fallback:', error.message);
-    }
-  })();
-  try {
-    await supportState.initPromise;
-  } finally {
-    supportState.initPromise = null;
-  }
-}
-
-function waitForChatReply() {
-  return new Promise((resolve) => window.setTimeout(resolve, 420));
-}
-
-async function answerChat(input) {
-  const cleanInput = input.trim();
-  if (!cleanInput || chatForm.classList.contains('is-busy')) return;
-  chatInput.value = '';
-  chatQuick.style.display = 'none';
-  chatForm.classList.add('is-busy');
-  if (!supportState.initialized) await initializeSupportChat();
-  if (!supportState.configured || !supportState.conversationId) {
-    addChatMessage(cleanInput, 'user');
-    showChatTyping(true);
-    await waitForChatReply();
-    showChatTyping(false);
-    addChatMessage(getBotReply(cleanInput), 'bot', { html: true });
-    chatQuick.style.display = 'flex';
-    chatForm.classList.remove('is-busy');
-    chatInput.focus();
-    return;
-  }
-  try {
-    const { error } = await database.client.rpc('send_support_customer_message', {
-      p_conversation_id: supportState.conversationId,
-      p_visitor_token: supportState.visitorToken,
-      p_body: cleanInput
-    });
-    if (error) throw error;
-    await loadSupportMessages();
-    if (!supportState.available) {
-      showChatTyping(true);
-      await waitForChatReply();
-      const { error: botError } = await database.client.rpc('send_support_bot_message', {
-        p_conversation_id: supportState.conversationId,
-        p_visitor_token: supportState.visitorToken,
-        p_body: getBotReply(cleanInput).replace(/<[^>]+>/g, '')
-      });
-      if (botError) throw botError;
-      showChatTyping(false);
-      await loadSupportMessages();
-    } else {
-      showChatTyping(true);
-      await waitForChatReply();
-      showChatTyping(false);
-      await database.client.rpc('send_support_bot_message', {
-        p_conversation_id: supportState.conversationId,
-        p_visitor_token: supportState.visitorToken,
-        p_body: 'Your message is with a Greenhub admin. They will reply here shortly.'
-      });
-      await loadSupportMessages();
-    }
-  } catch (error) {
-    console.error('[Greenhub] Could not send support message:', error.message);
-    showChatTyping(false);
-    addChatMessage(getBotReply(cleanInput), 'bot', { html: true });
-    chatQuick.style.display = supportState.available ? 'none' : 'flex';
-  } finally {
-    chatForm.classList.remove('is-busy');
-    chatInput.focus();
-  }
-}
-
-chatLauncher.addEventListener('click', () => toggleChat(!chatWidget.classList.contains('open')));
-document.querySelector('.chat-close').addEventListener('click', () => toggleChat(false));
-chatForm.addEventListener('submit', (event) => { event.preventDefault(); answerChat(chatInput.value); });
-chatQuick.addEventListener('click', (event) => { const button = event.target.closest('[data-chat-question]'); if (button) answerChat(button.dataset.chatQuestion); });
-chatMessages.addEventListener('click', (event) => { const button = event.target.closest('[data-chat-filter]'); if (!button) return; setFilter(button.dataset.chatFilter); document.querySelector('#shop').scrollIntoView({ behavior: 'smooth' }); addChatMessage(`Here are our ${button.dataset.chatFilter.toLowerCase()} products.`, 'bot'); });
+document.querySelectorAll('.smartsupp-trigger').forEach((button) => button.addEventListener('click', (event) => {
+  event.preventDefault();
+  if (typeof window.smartsupp === 'function') window.smartsupp('chat:open');
+}));
 
 function applySettings(remoteSettings = null) {
   const settings = cleanStorefrontCopy(remoteSettings || loadSettings());
@@ -820,8 +627,6 @@ function applySettings(remoteSettings = null) {
   document.querySelectorAll('.footer-links a').forEach((link) => {
     if (link.textContent.trim() === 'Fitment help') link.textContent = 'Product help';
   });
-  document.querySelectorAll('a[href*="wa.me"]').forEach((link) => { link.href = `https://wa.me/${GREENHUB_WHATSAPP}`; });
-  document.querySelectorAll('a[href*="t.me"]').forEach((link) => { link.href = GREENHUB_TELEGRAM; });
   if (settings.supportEmail) {
     document.querySelectorAll('[data-support-email]').forEach((link) => {
       link.textContent = settings.supportEmail;

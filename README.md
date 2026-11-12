@@ -31,15 +31,20 @@ npm run build   # verify the Vercel output locally
 npm start       # preview the site locally at http://localhost:4173
 ```
 
-The public storefront can load without Supabase, but the catalogue, checkout order creation, admin portal, and support inbox need these Production environment variables in Vercel:
+The public storefront can load without Supabase, but the catalogue, checkout order creation, and admin portal need these Production environment variables in Vercel:
 
 ```dotenv
 SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 SUPABASE_ANON_KEY=YOUR_PUBLIC_ANON_KEY
 SUPABASE_AUTH_REDIRECT_TO=https://YOUR_VERCEL_DOMAIN/admin.html
+RESEND_API_KEY=YOUR_RESEND_API_KEY
+ORDER_NOTIFICATION_EMAIL=greenhub2027@gmail.com
+ORDER_EMAIL_FROM=Greenhub Orders <orders@YOUR_VERIFIED_DOMAIN>
 ```
 
-The values in `.env` and `.env.local` are intentionally ignored by Git and are not uploaded to Vercel. After adding the variables, redeploy so they are available to the deployment. Never add a Supabase service-role key to these variables or to browser files.
+`RESEND_API_KEY`, `ORDER_NOTIFICATION_EMAIL`, and `ORDER_EMAIL_FROM` are used only by the server-side `/api/order-email` function. After an order is saved, the function sends the order ID, customer details, product names, quantities, total, and payment method to `greenhub2027@gmail.com`. Add the Resend key and a verified sender address in Vercel, then redeploy. Never add the Resend key or a Supabase service-role key to browser files.
+
+The values in `.env` and `.env.local` are intentionally ignored by Git and are not uploaded to Vercel. The `api/order-email.js` function uses Resend's email API; Resend requires the `from` address to be an allowed sender, so use a verified domain for production.
 
 ## Supabase setup
 
@@ -90,8 +95,8 @@ window.GREENHUB_SUPABASE_CONFIG = Object.freeze({
 
 Never put a Supabase service-role key in browser files. The server rejects a key whose JWT role is `service_role` or `supabase_admin`; replace it with the project’s public anon/publishable key in `.env.local`. The RLS policies in `supabase/schema.sql` keep catalogue and management operations restricted to approved admins while allowing public checkout order creation and newsletter subscriptions. All images uploaded from the admin console are stored in the `greenhub` bucket: product images use `products/<product-id>/...`, while customer-facing hero, story, and category images use `storefront/<field>/...`.
 
-The storefront support widget uses the `support_presence`, `support_conversations`, and `support_messages` tables created by the schema. In the admin console, open **Support** and switch availability on when you are ready to answer customers. When it is off, the widget stores the customer conversation and replies with the built-in assistant; when it is on, new messages appear in the admin inbox and replies are delivered back to the same customer chat.
+The storefront uses Smartsupp Live Chat with the configured website key. Customers can open the Smartsupp widget from the provider's floating launcher or the **Chat with us** links in the footer. Open **Smartsupp** in the admin console to go to Smartsupp and manage conversations, automations, and connected channels.
 
 ## Admin console
 
-Open `http://localhost:4173/admin.html` to manage products, upload product and storefront images, review orders and customers, manage team roles, change order status, update storefront messaging, and answer support conversations. Product categories are configured under **Store content** and are used by the product form, storefront category cards, and filters. Product, content, order, customer, team, support, newsletter, and image data load from Supabase; the storefront does not silently replace a missing catalogue with mock products.
+Open `http://localhost:4173/admin.html` to manage products, upload product and storefront images, review orders and customers, manage team roles, change order status, update storefront messaging, and open Smartsupp live chat management. Product categories are configured under **Store content** and are used by the product form, storefront category cards, and filters. Product, content, order, customer, team, newsletter, and image data load from Supabase; the storefront does not silently replace a missing catalogue with mock products.

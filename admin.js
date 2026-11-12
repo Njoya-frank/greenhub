@@ -1,7 +1,6 @@
 const database = window.GreenhubDB || { configured: false, client: null };
 const STOREFRONT_SETTINGS_SYNC_KEY = 'greenhub_store_settings_updated';
 const STORAGE_BUCKET = 'greenhub';
-const GREENHUB_WHATSAPP = '+49 1638 604683';
 const IMAGE_CONTENT_TYPES = Object.freeze({
   avif: 'image/avif',
   gif: 'image/gif',
@@ -18,10 +17,6 @@ let products = [];
 let editingProductId = null;
 let storefrontSettings = {};
 let currentAdminUserId = null;
-let supportConversations = [];
-let activeSupportConversationId = null;
-let supportPollTimer = null;
-let supportIsAvailable = false;
 let pendingConfirmation = null;
 const confirmMessageBox = document.querySelector('#confirm-message-box');
 const confirmMessageTitle = document.querySelector('#confirm-message-title');
@@ -271,7 +266,7 @@ function renderProducts() {
 }
 
 function renderOrders() {
-  const rows = ORDERS.map((order) => `<tr><td>${order.id}</td><td>${order.customer}</td><td>${order.date}</td><td>${order.items}</td><td>${price(order.total)}</td><td><select class="order-status-select status ${order.statusClass}" data-order-status="${order.id}"><option value="pending" ${order.status === 'pending' ? 'selected' : ''}>Pending</option><option value="paid" ${order.status === 'paid' ? 'selected' : ''}>Paid</option><option value="packing" ${order.status === 'packing' ? 'selected' : ''}>To pack</option><option value="shipped" ${order.status === 'shipped' ? 'selected' : ''}>Shipped</option><option value="delivered" ${order.status === 'delivered' ? 'selected' : ''}>Delivered</option><option value="cancelled" ${order.status === 'cancelled' ? 'selected' : ''}>Cancelled</option></select></td></tr>`).join('');
+  const rows = ORDERS.map((order) => `<tr><td>${escapeHtml(order.id)}</td><td>${escapeHtml(order.productName)}</td><td>${escapeHtml(order.quantity)}</td><td>${escapeHtml(order.customer)}</td><td><span class="payment-method-pill">${escapeHtml(order.paymentMethod)}</span></td><td>${escapeHtml(order.date)}</td><td>${escapeHtml(order.items)}</td><td>${price(order.total)}</td><td><select class="order-status-select status ${order.statusClass}" data-order-status="${escapeHtml(order.id)}"><option value="pending" ${order.status === 'pending' ? 'selected' : ''}>Pending</option><option value="paid" ${order.status === 'paid' ? 'selected' : ''}>Paid</option><option value="packing" ${order.status === 'packing' ? 'selected' : ''}>To pack</option><option value="shipped" ${order.status === 'shipped' ? 'selected' : ''}>Shipped</option><option value="delivered" ${order.status === 'delivered' ? 'selected' : ''}>Delivered</option><option value="cancelled" ${order.status === 'cancelled' ? 'selected' : ''}>Cancelled</option></select></td></tr>`).join('');
   document.querySelector('#orders-table').innerHTML = rows;
   document.querySelector('#mini-order-list').innerHTML = ORDERS.slice(0, 4).map((order) => `<div class="mini-order"><span><strong>${order.id}</strong><span>${order.customer}</span></span><small>${order.date}</small><span class="status ${order.statusClass}">${order.status}</span></div>`).join('');
 }
@@ -377,148 +372,6 @@ function showToast(message) {
   toast.classList.add('show');
   clearTimeout(showToast.timeout);
   showToast.timeout = setTimeout(() => toast.classList.remove('show'), 2400);
-}
-
-function updateSupportAvailabilityUI() {
-  const toggle = document.querySelector('#support-availability');
-  const label = document.querySelector('#support-availability-label');
-  const inboxStatus = document.querySelector('#support-inbox-status');
-  if (toggle) toggle.checked = supportIsAvailable;
-  if (label) label.textContent = supportIsAvailable ? 'Online — you are answering customers' : 'Offline — bot is answering';
-  if (inboxStatus) inboxStatus.textContent = supportIsAvailable ? 'Admin support active' : 'Bot support active';
-}
-
-async function loadSupportPresence() {
-  const { data, error } = await database.client.from('support_presence').select('is_available').eq('id', 1).maybeSingle();
-  if (error) throw error;
-  supportIsAvailable = data?.is_available === true;
-  updateSupportAvailabilityUI();
-}
-
-async function setSupportAvailability(event) {
-  if (!database.configured) return;
-  const nextValue = event.currentTarget.checked;
-  event.currentTarget.disabled = true;
-  const { error } = await database.client.from('support_presence').update({ is_available: nextValue, updated_at: new Date().toISOString() }).eq('id', 1);
-  event.currentTarget.disabled = false;
-  if (error) {
-    event.currentTarget.checked = supportIsAvailable;
-    showToast(`Could not update support status: ${error.message}`);
-    return;
-  }
-  supportIsAvailable = nextValue;
-  updateSupportAvailabilityUI();
-  showToast(nextValue ? 'You are now available in customer chat' : 'Bot support is now answering customers');
-}
-
-function renderSupportConversations() {
-  const list = document.querySelector('#support-conversation-list');
-  const count = document.querySelector('#nav-support-count');
-  if (!list) return;
-  const openConversations = supportConversations.filter((conversation) => conversation.status === 'open');
-  if (count) count.textContent = openConversations.length;
-  list.replaceChildren();
-  if (!supportConversations.length) {
-    list.innerHTML = '<div class="support-empty">No customer conversations yet.</div>';
-    return;
-  }
-  supportConversations.forEach((conversation) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = `support-conversation-item ${conversation.id === activeSupportConversationId ? 'active' : ''}`;
-    button.dataset.supportConversation = conversation.id;
-    const heading = document.createElement('strong');
-    heading.textContent = conversation.customer_name || `Visitor ${conversation.id.slice(0, 6)}`;
-    const meta = document.createElement('span');
-    meta.textContent = `${conversation.status === 'open' ? 'Open' : 'Closed'} · ${new Date(conversation.updated_at).toLocaleString()}`;
-    button.append(heading, meta);
-    list.appendChild(button);
-  });
-}
-
-function renderSupportThread(messages = []) {
-  const thread = document.querySelector('#support-thread');
-  if (!thread) return;
-  thread.replaceChildren();
-  if (!messages.length) {
-    thread.innerHTML = '<div class="support-empty">No messages in this conversation.</div>';
-    return;
-  }
-  messages.forEach((message) => {
-    const item = document.createElement('div');
-    item.className = `admin-chat-message ${message.sender_type}`;
-    const meta = document.createElement('span');
-    const senderLabel = message.sender_name || (message.sender_type === 'customer' ? 'CUSTOMER' : message.sender_type === 'admin' ? 'YOU' : 'GREENHUB BOT');
-    meta.textContent = `${senderLabel} · ${new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    const body = document.createElement('p');
-    body.textContent = message.body;
-    item.append(meta, body);
-    thread.appendChild(item);
-  });
-  thread.scrollTop = thread.scrollHeight;
-}
-
-async function loadSupportThread(conversationId = activeSupportConversationId) {
-  if (!conversationId) return;
-  const conversation = supportConversations.find((item) => item.id === conversationId);
-  if (!conversation) return;
-  activeSupportConversationId = conversationId;
-  const title = document.querySelector('#support-thread-title');
-  const closeButton = document.querySelector('#support-close-conversation');
-  const replyInput = document.querySelector('#support-reply-input');
-  const replyButton = document.querySelector('#support-reply-form button');
-  if (title) title.textContent = conversation.customer_name || `Visitor ${conversation.id.slice(0, 6)}`;
-  if (closeButton) closeButton.hidden = conversation.status !== 'open';
-  if (replyInput) replyInput.disabled = conversation.status !== 'open';
-  if (replyButton) replyButton.disabled = conversation.status !== 'open';
-  renderSupportConversations();
-  const { data, error } = await database.client.from('support_messages').select('id, sender_type, sender_name, body, created_at').eq('conversation_id', conversationId).order('created_at', { ascending: true }).order('id', { ascending: true });
-  if (error) { showToast(`Could not load conversation: ${error.message}`); return; }
-  renderSupportThread(data || []);
-}
-
-async function loadSupportData(silent = false) {
-  if (!database.configured) return;
-  try {
-    await loadSupportPresence();
-    const { data, error } = await database.client.from('support_conversations').select('id, customer_name, customer_email, status, created_at, updated_at').order('updated_at', { ascending: false });
-    if (error) throw error;
-    supportConversations = data || [];
-    if (activeSupportConversationId && !supportConversations.some((item) => item.id === activeSupportConversationId)) activeSupportConversationId = null;
-    renderSupportConversations();
-    if (activeSupportConversationId) await loadSupportThread(activeSupportConversationId);
-  } catch (error) {
-    if (!silent) showToast(`Could not load support inbox: ${error.message}`);
-    else console.error('[Greenhub] Support inbox sync failed:', error.message);
-  }
-}
-
-async function sendSupportReply(event) {
-  event.preventDefault();
-  const input = document.querySelector('#support-reply-input');
-  const body = input.value.trim();
-  const conversation = supportConversations.find((item) => item.id === activeSupportConversationId);
-  if (!body || !conversation || conversation.status !== 'open') return;
-  const button = event.currentTarget.querySelector('button');
-  input.disabled = true;
-  button.disabled = true;
-  const { error } = await database.client.from('support_messages').insert({ conversation_id: conversation.id, sender_type: 'admin', sender_id: currentAdminUserId, sender_name: 'Greenhub admin', body });
-  input.disabled = false;
-  button.disabled = false;
-  if (error) { showToast(`Could not send reply: ${error.message}`); return; }
-  input.value = '';
-  await loadSupportData(true);
-  await loadSupportThread(conversation.id);
-}
-
-async function closeSupportConversation() {
-  const conversation = supportConversations.find((item) => item.id === activeSupportConversationId);
-  if (!conversation) return;
-  const { error } = await database.client.from('support_conversations').update({ status: 'closed', updated_at: new Date().toISOString() }).eq('id', conversation.id);
-  if (error) { showToast(`Could not close conversation: ${error.message}`); return; }
-  showToast('Conversation closed');
-  await loadSupportData(true);
-  await loadSupportThread(conversation.id);
 }
 
 function releasePreviewObjectUrl(preview) {
@@ -816,7 +669,7 @@ async function deleteProduct(product) {
 document.querySelectorAll('.admin-nav-item').forEach((item) => item.addEventListener('click', () => showView(item.dataset.view)));
 document.querySelectorAll('[data-jump]').forEach((item) => item.addEventListener('click', () => showView(item.dataset.jump)));
 document.querySelectorAll('[data-action="add-product"]').forEach((item) => item.addEventListener('click', () => { showView('products'); openProductModal(); }));
-document.querySelector('[data-action="export-orders"]').addEventListener('click', () => downloadCsv('greenhub-orders.csv', [['Order', 'Customer', 'Date', 'Items', 'Total', 'Status'], ...ORDERS.map((order) => [order.id, order.customer, order.date, order.items, price(order.total), order.status])]));
+document.querySelector('[data-action="export-orders"]').addEventListener('click', () => downloadCsv('greenhub-orders.csv', [['Order', 'Product name', 'Quantity', 'Customer', 'Payment method', 'Date', 'Items', 'Total', 'Status'], ...ORDERS.map((order) => [order.id, order.productName, order.quantity, order.customer, order.paymentMethod, order.date, order.items, price(order.total), order.status])]));
 document.querySelector('[data-action="export-customers"]').addEventListener('click', () => downloadCsv('greenhub-customers.csv', [['Name', 'Email', 'Location', 'Orders', 'Spent', 'Last order', 'Segment'], ...CUSTOMERS.map((customer) => [customer.name, customer.email, customer.location, customer.orders, price(customer.spent), customer.lastOrder, customer.segment])]));
 document.querySelector('#product-search').addEventListener('input', renderProducts);
 document.querySelector('#product-filter').addEventListener('change', renderProducts);
@@ -850,13 +703,6 @@ document.querySelector('#team-table').addEventListener('click', (event) => {
   const roleButton = event.target.closest('[data-member-id]');
   if (roleButton) updateMemberRole(roleButton.dataset.memberId, roleButton.dataset.memberRole, roleButton);
 });
-document.querySelector('#support-availability').addEventListener('change', setSupportAvailability);
-document.querySelector('#support-conversation-list').addEventListener('click', (event) => {
-  const button = event.target.closest('[data-support-conversation]');
-  if (button) loadSupportThread(button.dataset.supportConversation);
-});
-document.querySelector('#support-reply-form').addEventListener('submit', sendSupportReply);
-document.querySelector('#support-close-conversation').addEventListener('click', closeSupportConversation);
 confirmMessageCancel.addEventListener('click', () => closeConfirmation(false));
 confirmMessageAccept.addEventListener('click', () => closeConfirmation(true));
 confirmMessageBox.addEventListener('click', (event) => {
@@ -879,7 +725,6 @@ async function loadContent() {
     ? settings.categories
     : CATEGORY_SETTING_KEYS.map((key, index) => settings[key] || LEGACY_CATEGORY_VALUES[index] || '');
   settings.categories = categories;
-  settings.whatsapp = GREENHUB_WHATSAPP;
   STOREFRONT_IMAGE_FIELDS.forEach((field) => {
     settings[field.urlKey] = window.GreenhubStorage.resolveUrl(settings[field.urlKey], settings[field.pathKey]);
   });
@@ -932,11 +777,19 @@ async function loadRemoteData() {
   try {
     const [productResponse, orderResponse, customerResponse] = await Promise.all([
       database.client.from('products').select('id, name, category, type, price, old_price, meta, tag, active, image_url, image_path').order('created_at', { ascending: false }),
-      database.client.from('orders').select('id, customer_name, customer_email, items, total, status, created_at').order('created_at', { ascending: false }),
+      database.client.from('orders').select('id, customer_name, customer_email, items, payment_method, total, status, created_at').order('created_at', { ascending: false }),
       database.client.from('customers').select('name, email, location, segment, created_at').order('created_at', { ascending: false })
     ]);
     if (!productResponse.error && productResponse.data) products = productResponse.data.map(fromDatabaseProduct);
-    if (!orderResponse.error && orderResponse.data) ORDERS = orderResponse.data.map((order) => ({ id: order.id, customer: order.customer_name, customerEmail: order.customer_email || '', date: new Date(order.created_at).toLocaleDateString(), items: Array.isArray(order.items) ? `${order.items.length} product${order.items.length === 1 ? '' : 's'}` : '—', total: Number(order.total), status: order.status, statusClass: order.status === 'paid' ? 'paid' : order.status === 'shipped' || order.status === 'delivered' ? 'shipped' : order.status === 'cancelled' ? 'cancelled' : 'packing' }));
+    if (!orderResponse.error && orderResponse.data) ORDERS = orderResponse.data.map((order) => {
+      const orderItems = Array.isArray(order.items) ? order.items : [];
+      const productNames = orderItems.map((item) => item?.name).filter(Boolean);
+      const quantities = orderItems.map((item) => `${item?.name || 'Product'} ×${Math.max(1, Number.parseInt(item?.quantity, 10) || 1)}`);
+      const totalQuantity = orderItems.reduce((sum, item) => sum + Math.max(1, Number.parseInt(item?.quantity, 10) || 1), 0);
+      const paymentMethodLabels = { bitcoin: 'Bitcoin', giftcard: 'Gift card', revolut: 'Revolut Bank' };
+      const paymentMethod = String(order.payment_method || '').trim().toLowerCase();
+      return { id: order.id, customer: order.customer_name, customerEmail: order.customer_email || '', productName: productNames.join(', ') || '—', quantity: quantities.join(', ') || '—', paymentMethod: paymentMethodLabels[paymentMethod] || order.payment_method || '—', date: new Date(order.created_at).toLocaleDateString(), items: `${totalQuantity} unit${totalQuantity === 1 ? '' : 's'} · ${orderItems.length} product${orderItems.length === 1 ? '' : 's'}`, total: Number(order.total), status: order.status, statusClass: order.status === 'paid' ? 'paid' : order.status === 'shipped' || order.status === 'delivered' ? 'shipped' : order.status === 'cancelled' ? 'cancelled' : 'packing' };
+    });
     if (!customerResponse.error && customerResponse.data) CUSTOMERS = customerResponse.data.map((customer) => {
       const customerOrders = ORDERS.filter((order) => order.customerEmail && customer.email && order.customerEmail.toLowerCase() === customer.email.toLowerCase());
       return { name: customer.name, email: customer.email || '—', location: customer.location || '—', orders: customerOrders.length, spent: customerOrders.reduce((sum, order) => sum + order.total, 0), lastOrder: customerOrders[0]?.date || '—', segment: customer.segment };
@@ -1029,8 +882,6 @@ async function authorizeAdmin(user) {
   currentAdminUserId = user.id;
   showAdminShell(profile);
   await loadRemoteData();
-  await loadSupportData();
-  if (!supportPollTimer) supportPollTimer = setInterval(() => loadSupportData(true), 5000);
   return true;
 }
 
