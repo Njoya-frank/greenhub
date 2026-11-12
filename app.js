@@ -193,16 +193,41 @@ function showToast(message) {
   showToast.timeout = setTimeout(() => toast.classList.remove('show'), 2400);
 }
 
-async function sendOrderNotification(order) {
-  const response = await fetch('/api/order-email', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(order)
+const orderMessageModal = document.querySelector('#order-message-modal');
+const orderMessageId = document.querySelector('#order-message-id');
+
+function closeOrderMessage() {
+  orderMessageModal.classList.remove('open');
+  orderMessageModal.setAttribute('aria-hidden', 'true');
+}
+
+function openOrderMessage(orderId) {
+  orderMessageId.textContent = orderId;
+  orderMessageModal.classList.add('open');
+  orderMessageModal.setAttribute('aria-hidden', 'false');
+}
+
+function sendOrderToSmartsupp(order) {
+  if (typeof window.smartsupp !== 'function') throw new Error('Smartsupp chat is not available.');
+  const products = order.items.map((item) => `- ${item.name} ×${item.quantity} (€${(item.price * item.quantity).toFixed(2)})`).join('\n');
+  const message = [
+    `New Greenhub order: ${order.id}`,
+    `Customer: ${order.customer_name}`,
+    `Email: ${order.customer_email}`,
+    `Payment method: ${order.payment_method}`,
+    'Products:',
+    products,
+    `Total: €${Number(order.total).toFixed(2)}`
+  ].join('\n');
+  window.smartsupp('name', order.customer_name);
+  window.smartsupp('email', order.customer_email);
+  window.smartsupp('variables', {
+    Order_ID: order.id,
+    Payment_Method: order.payment_method,
+    Order_Total: `€${Number(order.total).toFixed(2)}`
   });
-  let result = {};
-  try { result = await response.json(); } catch { /* keep the fallback error */ }
-  if (!response.ok) throw new Error(result.error || 'Order email could not be sent.');
-  return result;
+  window.smartsupp('chat:send', message);
+  window.smartsupp('chat:open');
 }
 
 function openCart() {
@@ -520,20 +545,18 @@ checkoutForm.addEventListener('submit', (event) => {
     if (customerResponse.error && customerResponse.error.code !== '23505') throw new Error(customerResponse.error.message);
   })() : new Promise((resolve) => setTimeout(resolve, 850));
   saveOrder.then(async () => {
-    let emailWarning = '';
-    if (database.configured) {
-      try {
-        await sendOrderNotification(order);
-      } catch (error) {
-        emailWarning = String(error?.message || 'Order email could not be sent.');
-        console.error('Order notification failed:', error);
-      }
+    let chatWarning = '';
+    try {
+      sendOrderToSmartsupp(order);
+    } catch (error) {
+      chatWarning = String(error?.message || 'Order details could not be sent to Smartsupp.');
+      console.error('Smartsupp order message failed:', error);
     }
     submitButton.classList.remove('is-loading');
     document.querySelector('#pay-button-label').textContent = paymentLabels[state.payment];
     const confirmation = database.configured ? `Order ${order.id} received with ${paymentName}` : `Demo checkout ready with ${paymentName}`;
-    const emailStatus = !database.configured ? '' : emailWarning ? ' Email notification failed.' : ' Email sent.';
-    showToast(`${confirmation}.${emailStatus}`);
+    const chatStatus = chatWarning ? ` Smartsupp message failed: ${chatWarning}` : ' Order details sent to Smartsupp chat.';
+    showToast(`${confirmation}.${chatStatus}`);
     state.cart = [];
     state.giftCardDiscount = 0;
     state.giftCardCode = '';
@@ -541,6 +564,7 @@ checkoutForm.addEventListener('submit', (event) => {
     document.querySelector('#gift-card-message').textContent = 'Enter a code if you have one, or continue with gift card payment.';
     renderCart();
     closeCheckout();
+    openOrderMessage(order.id);
   }).catch((error) => {
     submitButton.classList.remove('is-loading');
     document.querySelector('#pay-button-label').textContent = paymentLabels[state.payment];
@@ -597,7 +621,13 @@ document.querySelector('#newsletter-form').addEventListener('submit', async (eve
   form.reset();
   showToast('You are on the list — welcome to Greenhub');
 });
-document.addEventListener('keydown', (event) => { if (event.key === 'Escape') { toggleSearch(false); closeCart(); closeCheckout(); } });
+document.addEventListener('keydown', (event) => { if (event.key === 'Escape') { toggleSearch(false); closeCart(); closeCheckout(); closeOrderMessage(); } });
+
+document.querySelectorAll('[data-order-message-close]').forEach((button) => button.addEventListener('click', closeOrderMessage));
+document.querySelector('#open-order-chat').addEventListener('click', () => {
+  closeOrderMessage();
+  if (typeof window.smartsupp === 'function') window.smartsupp('chat:open');
+});
 
 document.querySelectorAll('.smartsupp-trigger').forEach((button) => button.addEventListener('click', (event) => {
   event.preventDefault();

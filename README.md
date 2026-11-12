@@ -37,14 +37,11 @@ The public storefront can load without Supabase, but the catalogue, checkout ord
 SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 SUPABASE_ANON_KEY=YOUR_PUBLIC_ANON_KEY
 SUPABASE_AUTH_REDIRECT_TO=https://YOUR_VERCEL_DOMAIN/admin.html
-RESEND_API_KEY=YOUR_RESEND_API_KEY
-ORDER_NOTIFICATION_EMAIL=greenhub2027@gmail.com
-ORDER_EMAIL_FROM=Greenhub Orders <orders@YOUR_VERIFIED_DOMAIN>
 ```
 
-`RESEND_API_KEY`, `ORDER_NOTIFICATION_EMAIL`, and `ORDER_EMAIL_FROM` are used only by the server-side `/api/order-email` function. After an order is saved, the function sends the order ID, customer details, product names, quantities, total, and payment method to `greenhub2027@gmail.com`. Add the Resend key and a verified sender address in Vercel, then redeploy. Never add the Resend key or a Supabase service-role key to browser files.
+After an order is saved, the storefront sends the order ID, customer details, product names, quantities, total, and payment method into the customer's Smartsupp chat. The order message appears in the Smartsupp Inbox and the checkout opens the chat so the customer can continue there. No Resend key is needed for this chat notification.
 
-The values in `.env` and `.env.local` are intentionally ignored by Git and are not uploaded to Vercel. The `api/order-email.js` function uses Resend's email API; Resend requires the `from` address to be an allowed sender, so use a verified domain for production.
+The values in `.env` and `.env.local` are intentionally ignored by Git and are not uploaded to Vercel. Keep Smartsupp credentials in the supplied storefront script and do not add private API tokens to browser code.
 
 ## Supabase setup
 

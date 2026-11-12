@@ -109,21 +109,27 @@ module.exports = async function orderEmail(request, response) {
   const order = normalizeOrder(await readRequestBody(request));
   if (!order) return sendJson(response, 400, { error: 'Order details are incomplete.' });
 
-  const resendResponse = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      from: String(process.env.ORDER_EMAIL_FROM || DEFAULT_FROM).trim(),
-      to: [String(process.env.ORDER_NOTIFICATION_EMAIL || DEFAULT_RECIPIENT).trim()],
-      reply_to: order.customerEmail,
-      subject: `New Greenhub order ${order.id}`,
-      html: orderEmailMarkup(order),
-      text: orderEmailText(order)
-    })
-  });
+  let resendResponse;
+  try {
+    resendResponse = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: String(process.env.ORDER_EMAIL_FROM || DEFAULT_FROM).trim(),
+        to: [String(process.env.ORDER_NOTIFICATION_EMAIL || DEFAULT_RECIPIENT).trim()],
+        reply_to: order.customerEmail,
+        subject: `New Greenhub order ${order.id}`,
+        html: orderEmailMarkup(order),
+        text: orderEmailText(order)
+      })
+    });
+  } catch (error) {
+    console.error('[Greenhub] Could not reach Resend:', error?.message || error);
+    return sendJson(response, 502, { error: 'Could not reach the email provider.' });
+  }
 
   if (!resendResponse.ok) {
     let errorMessage = 'The email provider rejected the order notification.';

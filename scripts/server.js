@@ -47,6 +47,9 @@ function isPublicSupabaseKey(value) {
 
 function getSupabaseConfig() {
   const env = loadEnvironment();
+  ['RESEND_API_KEY', 'ORDER_NOTIFICATION_EMAIL', 'ORDER_EMAIL_FROM'].forEach((key) => {
+    if (!process.env[key] && env[key]) process.env[key] = env[key];
+  });
   const publicKey = isPublicSupabaseKey(env.SUPABASE_ANON_KEY) ? env.SUPABASE_ANON_KEY : '';
   return {
     url: normalizeSupabaseUrl(env.SUPABASE_URL),
